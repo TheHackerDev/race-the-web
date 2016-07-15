@@ -134,24 +134,12 @@ func checkFlags() error {
 
 	// Get the request body content
 	if *flagBodyFile != "" {
-		file, err := os.Open(*flagBodyFile)
+		buf, err := ioutil.ReadFile(*flagBodyFile)
 		if err != nil {
 			// Error opening the file
 			return fmt.Errorf("Unable to open the file: %s\n", *flagBodyFile)
 		}
-
-		// Ensure that the file is closed
-		defer file.Close()
-
-		// Initialize the file scanner
-		scanner := bufio.NewScanner(file)
-
-		// Iterate through the first line of the file
-		line := 0
-		for scanner.Scan() && line < 1 {
-			body = scanner.Text()
-			line++
-		}
+		body = string(buf)
 	} else {
 		// Body file flag not present, exit.
 		return fmt.Errorf("Request body contents required.")
@@ -332,7 +320,7 @@ func compareResponses() (uniqueResponses map[*http.Response]int) {
 		} else {
 			// Add to the unique responses map, if no similar ones exist
 			for uResp := range uniqueResponses {
-				// Compare response status code & content length
+				// Compare response status code, body content, and content length
 				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength {
 					// Similar, increase count
 					uniqueResponses[uResp]++
