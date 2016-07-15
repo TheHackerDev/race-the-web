@@ -52,8 +52,7 @@ var flagTargetURL = flag.String("url", "", "URL to send the request to.")
 var flagBodyFile = flag.String("body", "", "The location (relative or absolute path) of a file containing the body of the request.")
 var flagCookiesFile = flag.String("cookies", "", "The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: cookiename,cookieval")
 var flagNumRequests = flag.Int("requests", 100, "The number of requests to send to the destination URL.")
-
-//var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
+var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
 
 func main() {
 	// Change output location of logs
@@ -68,6 +67,7 @@ func main() {
 	}
 
 	// Send the requests concurrently
+	log.Println("Requests begin.")
 	errChan := sendRequests()
 	if len(errChan) != 0 {
 		for err := range errChan {
@@ -79,7 +79,6 @@ func main() {
 	uniqueResponses := compareResponses()
 
 	// Output the responses
-	log.Printf("Responses:\n")
 	outputResponses(uniqueResponses)
 
 	// Echo completion
@@ -187,8 +186,13 @@ func sendRequests() chan error {
 	errorChannel := make(chan error, numRequests)
 	urlsInProgress.Add(numRequests)
 
-	// Start sending requests
-	log.Println("Requests started.")
+	// VERBOSE
+	if verbose {
+		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, "POST", targetURL.String())
+		if body != "" {
+			log.Printf("[VERBOSE] Request body: %s", body)
+		}
+	}
 	for i := 0; i < numRequests; i++ {
 		go func(index int) {
 			// Ensure that the waitgroup element is returned
@@ -231,9 +235,12 @@ func sendRequests() chan error {
 			// Check the error type from the request
 			if err != nil {
 				if uErr, ok := err.(*url.Error); ok {
-					if _, ok2 := uErr.Err.(*RedirectError); ok2 {
+					if rErr, ok2 := uErr.Err.(*RedirectError); ok2 {
 						// Redirect error
-						//errorChannel <- fmt.Errorf("[VERBOSE] %v", rErr)
+						// VERBOSE
+						if verbose {
+							log.Printf("[VERBOSE] %v\n", rErr)
+						}
 						// Add the response to the responses channel, because it is still valid
 						responses <- resp
 					} else {
@@ -254,6 +261,11 @@ func sendRequests() chan error {
 	// Wait for the URLs to finish sending
 	urlsInProgress.Wait()
 
+	// VERBOSE
+	if verbose {
+		log.Printf("[VERBOSE] Requests complete.")
+	}
+
 	// Close the response and error chanels, so they don't block on the range read
 	close(responses)
 	close(errorChannel)
@@ -267,6 +279,11 @@ func sendRequests() chan error {
 func compareResponses() (uniqueResponses map[*http.Response]int) {
 	// Initialize the unique responses map
 	uniqueResponses = make(map[*http.Response]int)
+
+	// VERBOSE
+	if verbose {
+		log.Printf("[VERBOSE] Unique response comparison begin.\n")
+	}
 
 	// Compare the responses, one at a time
 	for resp := range responses {
@@ -292,6 +309,11 @@ func compareResponses() (uniqueResponses map[*http.Response]int) {
 		}
 	}
 
+	// VERBOSE
+	if verbose {
+		log.Printf("[VERBOSE] Unique response comparision complete.\n")
+	}
+
 	return
 }
 
@@ -308,7 +330,6 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 				fmt.Printf("\t%v: %v\n", header, value)
 			}
 		}
-		fmt.Printf("[Content-Length] %v\n", resp.ContentLength)
 		location, err := resp.Location()
 		if err != http.ErrNoLocation {
 			fmt.Printf("[Location] %v\n", location.String())
@@ -325,6 +346,6 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 	}
 }
 
-// TODO: Add in verbosity (print response bodies, declare when sending a request)
 // TODO: Add in option to do GET, HEAD, PUT, or POST (only ones supported by http.Client.Do)
 // TODO: Add in user option to follow redirects (default: no)
+// TODO: Compare response body as well (if content-length != 0)
