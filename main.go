@@ -47,6 +47,9 @@ var numRequests int
 // Request type
 var requestType string
 
+// Follow redirects
+var followRedirects bool
+
 // Verbose logging enabled
 var verbose bool
 
@@ -55,8 +58,9 @@ var flagTargetURL = flag.String("url", "", "URL to send the request to.")
 var flagBodyFile = flag.String("body", "", "The location (relative or absolute path) of a file containing the body of the request.")
 var flagCookiesFile = flag.String("cookies", "", "The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: cookiename,cookieval")
 var flagNumRequests = flag.Int("requests", 100, "The number of requests to send to the destination URL.")
-var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
 var flagRequestType = flag.String("request", "POST", "The request type. Can be either `POST, GET, HEAD, PUT`.")
+var flagFollowRedirects = flag.Bool("redirects", false, "Follow redirects (3xx status code in responses)")
+var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
 
 func main() {
 	// Change output location of logs
@@ -97,6 +101,9 @@ func checkFlags() error {
 
 	// Set verbose logging explicitely
 	verbose = *flagVerbose
+
+	// Determine whether to follow redirects
+	followRedirects = *flagFollowRedirects
 
 	// Set the request type
 	switch strings.ToUpper(*flagRequestType) {
@@ -232,21 +239,34 @@ func sendRequests() chan error {
 			// Create the HTTP client
 			// Using Cookie jar
 			// Ignoring TLS errors
-			// Ignoring redirects (more accurate output)
+			// Ignoring redirects (more accurate output), depending on user flag
 			// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
-			client := http.Client{
-				Jar: jar,
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: true,
+			var client http.Client
+			if followRedirects {
+				client = http.Client{
+					Jar: jar,
+					Transport: &http.Transport{
+						TLSClientConfig: &tls.Config{
+							InsecureSkipVerify: true,
+						},
 					},
-				},
-				CheckRedirect: func(req *http.Request, via []*http.Request) error {
-					// Craft the custom error
-					redirectError := RedirectError{req}
-					return &redirectError
-				},
-				Timeout: 20 * time.Second,
+					Timeout: 20 * time.Second,
+				}
+			} else {
+				client = http.Client{
+					Jar: jar,
+					Transport: &http.Transport{
+						TLSClientConfig: &tls.Config{
+							InsecureSkipVerify: true,
+						},
+					},
+					CheckRedirect: func(req *http.Request, via []*http.Request) error {
+						// Craft the custom error
+						redirectError := RedirectError{req}
+						return &redirectError
+					},
+					Timeout: 20 * time.Second,
+				}
 			}
 
 			// Make the request
@@ -357,15 +377,13 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 		if err != nil {
 			fmt.Println("[Body] ")
 		} else {
-			// Make sure the response body is closed
-			defer resp.Body.Close()
 			fmt.Printf("[Body]\n%s\n", respBody)
+			// Close the response body
+			resp.Body.Close()
 		}
 		fmt.Printf("Similar: %v\n\n", count)
 	}
 }
 
-// TODO: Add in option to do GET, HEAD, PUT, or POST (only ones supported by http.Client.Do)
-// TODO: Add in user option to follow redirects (default: no)
 // BUG: Not reading some response bodies. Might be a timeout issue?
 // TODO: Compare response body as well (if content-length != 0)
