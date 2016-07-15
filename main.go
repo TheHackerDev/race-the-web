@@ -84,7 +84,12 @@ func main() {
 	}
 
 	// Compare the responses for uniqueness
-	uniqueResponses := compareResponses()
+	uniqueResponses, errChan := compareResponses()
+	if len(errChan) != 0 {
+		for err := range errChan {
+			log.Printf("[ERROR] %s\n", err.Error())
+		}
+	}
 
 	// Output the responses
 	outputResponses(uniqueResponses)
@@ -303,9 +308,12 @@ func sendRequests() chan error {
 // Function compareResponses compares the responses returned from the requests,
 // and adds them to a map, where the key is an *http.Response, and the value is
 // the number of similar responses observed.
-func compareResponses() (uniqueResponses map[*http.Response]int) {
+func compareResponses() (uniqueResponses map[*http.Response]int, errorChannel chan error) {
 	// Initialize the unique responses map
 	uniqueResponses = make(map[*http.Response]int)
+
+	// Initialize the error channel
+	errorChannel = make(chan error, len(responses))
 
 	// VERBOSE
 	if verbose {
@@ -314,14 +322,40 @@ func compareResponses() (uniqueResponses map[*http.Response]int) {
 
 	// Compare the responses, one at a time
 	for resp := range responses {
+		// Read the response body
+		defer resp.Body.Close()
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			errorChannel <- fmt.Errorf("Error reading response body: %s", err.Error())
+
+			// Exit this loop
+			continue
+		}
+
 		// Add an entry, if the unique responses map is empty
 		if len(uniqueResponses) == 0 {
 			uniqueResponses[resp] = 0
 		} else {
 			// Add to the unique responses map, if no similar ones exist
 			for uResp := range uniqueResponses {
+				// Read the unique response body
+				defer uResp.Body.Close()
+				uRespBody, err := ioutil.ReadAll(uResp.Body)
+				if err != nil {
+					errorChannel <- fmt.Errorf("Error reading unique response body: %s", err.Error())
+
+					// Exit the inner loop
+					continue
+				}
+
+				// Compare the response bodies
+				respBodyMatch := false
+				if string(respBody) == string(uRespBody) {
+					respBodyMatch = true
+				}
+
 				// Compare response status code, body content, and content length
-				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength {
+				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength && respBodyMatch {
 					// Similar, increase count
 					uniqueResponses[uResp]++
 					// Exit inner loop
@@ -340,6 +374,9 @@ func compareResponses() (uniqueResponses map[*http.Response]int) {
 	if verbose {
 		log.Printf("[VERBOSE] Unique response comparision complete.\n")
 	}
+
+	// Close the error channel
+	close(errorChannel)
 
 	return
 }
