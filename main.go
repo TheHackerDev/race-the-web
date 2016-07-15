@@ -44,6 +44,9 @@ var jar *cookiejar.Jar
 // Number of requests
 var numRequests int
 
+// Request type
+var requestType string
+
 // Verbose logging enabled
 var verbose bool
 
@@ -53,6 +56,7 @@ var flagBodyFile = flag.String("body", "", "The location (relative or absolute p
 var flagCookiesFile = flag.String("cookies", "", "The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: cookiename,cookieval")
 var flagNumRequests = flag.Int("requests", 100, "The number of requests to send to the destination URL.")
 var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
+var flagRequestType = flag.String("request", "POST", "The request type. Can be either `POST, GET, HEAD, PUT`.")
 
 func main() {
 	// Change output location of logs
@@ -91,8 +95,23 @@ func checkFlags() error {
 	// Parse the flags
 	flag.Parse()
 
-	// set verbose logging explicitely
+	// Set verbose logging explicitely
 	verbose = *flagVerbose
+
+	// Set the request type
+	switch strings.ToUpper(*flagRequestType) {
+	case "POST":
+		requestType = "POST"
+	case "GET":
+		requestType = "GET"
+	case "PUT":
+		requestType = "PUT"
+	case "HEAD":
+		requestType = "HEAD"
+	default:
+		// Invalid request type specified
+		return fmt.Errorf("Invalid request type specified.")
+	}
 
 	// Ensure that the destination URL is present
 	if *flagTargetURL == "" {
@@ -188,7 +207,7 @@ func sendRequests() chan error {
 
 	// VERBOSE
 	if verbose {
-		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, "POST", targetURL.String())
+		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, requestType, targetURL.String())
 		if body != "" {
 			log.Printf("[VERBOSE] Request body: %s", body)
 		}
@@ -204,7 +223,7 @@ func sendRequests() chan error {
 			requestBody := strings.NewReader(body)
 
 			// Declare HTTP request method and URL
-			req, err := http.NewRequest("POST", targetURL.String(), requestBody)
+			req, err := http.NewRequest(requestType, targetURL.String(), requestBody)
 			if err != nil {
 				errorChannel <- fmt.Errorf("Error in forming request: %v", err.Error())
 				return
@@ -348,4 +367,5 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 
 // TODO: Add in option to do GET, HEAD, PUT, or POST (only ones supported by http.Client.Do)
 // TODO: Add in user option to follow redirects (default: no)
+// BUG: Not reading some response bodies. Might be a timeout issue?
 // TODO: Compare response body as well (if content-length != 0)
