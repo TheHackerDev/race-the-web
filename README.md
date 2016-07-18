@@ -17,11 +17,11 @@ That is where **race-the-web** comes in. This program aims to discover race cond
 
 **Warning:** Denial of service may be an unintended side-effect of using this application, so please be careful when using it, and always perform this kind of testing with the explicit permission of the server owner and web application owner.
 
-Credit goes to [Josip Franjković](https://twitter.com/josipfranjkovic) for his [excellent article on the subject][https://www.josipfranjkovic.com/blog/race-conditions-on-web), which introduced me to this problem.
+Credit goes to [Josip Franjković](https://twitter.com/josipfranjkovic) for his [excellent article on the subject](https://www.josipfranjkovic.com/blog/race-conditions-on-web), which introduced me to this problem.
 
 ## Practical Examples
 
-TODO: Use the program in the wild to gather practical examples of its effectiveness and the prevelance of race conditions in web applications.
+**TODO**: Use the program in the wild to gather practical examples of its effectiveness and the prevelance of race conditions in web applications.
 
 ## Usage
 
@@ -38,7 +38,7 @@ This is a command-line tool. Use the following flags to run the program:
 **Example:**
 
 - `race-the-web -url=http://www.example.com/ -body=body.txt -cookies=cookies.txt -requests=100 -type=POST -v`
-..* Sends 100 POST requests to `http://www.example.com/`, with the cookies found in the file `cookies.txt` and the body contents found in the file `body.txt` (both files being located in the same directory as the program is being run from). Verbose logging is also enabled.
+  - Sends 100 POST requests to `http://www.example.com/`, with the cookies found in the file `cookies.txt` and the body contents found in the file `body.txt` (both files being located in the same directory as the program is being run from). Verbose logging is also enabled.
 
 ## Why Go
 
