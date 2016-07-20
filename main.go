@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -21,6 +22,9 @@ var urlsInProgress sync.WaitGroup
 
 // Responses is a channel to store the concurrent responses from the target
 var responses chan *http.Response
+
+// UniqueResponses is a map to store all compared responses, and the number of similar responses found
+var uniqueResponses map[*http.Response]int
 
 // RedirectError is a custom error type for following redirects, and can be safely ignored
 type RedirectError struct {
@@ -74,9 +78,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Make sure all response bodies are closed- memory leaks otherwise
+	defer func() {
+		for resp := range responses {
+			resp.Body.Close()
+		}
+		for resp := range uniqueResponses {
+			resp.Body.Close()
+		}
+	}()
+
+	// Initialize an error channel
+	var errChan chan error
+
 	// Send the requests concurrently
 	log.Println("Requests begin.")
-	errChan := sendRequests()
+	errChan = sendRequests()
 	if len(errChan) != 0 {
 		for err := range errChan {
 			log.Printf("[ERROR] %s\n", err.Error())
@@ -84,7 +101,7 @@ func main() {
 	}
 
 	// Compare the responses for uniqueness
-	uniqueResponses, errChan := compareResponses()
+	uniqueResponses, errChan = compareResponses()
 	if len(errChan) != 0 {
 		for err := range errChan {
 			log.Printf("[ERROR] %s\n", err.Error())
@@ -308,9 +325,9 @@ func sendRequests() chan error {
 // Function compareResponses compares the responses returned from the requests,
 // and adds them to a map, where the key is an *http.Response, and the value is
 // the number of similar responses observed.
-func compareResponses() (uniqueResponses map[*http.Response]int, errorChannel chan error) {
+func compareResponses() (newResponses map[*http.Response]int, errorChannel chan error) {
 	// Initialize the unique responses map
-	uniqueResponses = make(map[*http.Response]int)
+	newResponses = make(map[*http.Response]int)
 
 	// Initialize the error channel
 	errorChannel = make(chan error, len(responses))
@@ -323,8 +340,7 @@ func compareResponses() (uniqueResponses map[*http.Response]int, errorChannel ch
 	// Compare the responses, one at a time
 	for resp := range responses {
 		// Read the response body
-		defer resp.Body.Close()
-		respBody, err := ioutil.ReadAll(resp.Body)
+		respBody, err := readResponseBody(resp)
 		if err != nil {
 			errorChannel <- fmt.Errorf("Error reading response body: %s", err.Error())
 
@@ -333,14 +349,13 @@ func compareResponses() (uniqueResponses map[*http.Response]int, errorChannel ch
 		}
 
 		// Add an entry, if the unique responses map is empty
-		if len(uniqueResponses) == 0 {
-			uniqueResponses[resp] = 0
+		if len(newResponses) == 0 {
+			newResponses[resp] = 0
 		} else {
 			// Add to the unique responses map, if no similar ones exist
-			for uResp := range uniqueResponses {
+			for uResp := range newResponses {
 				// Read the unique response body
-				defer uResp.Body.Close()
-				uRespBody, err := ioutil.ReadAll(uResp.Body)
+				uRespBody, err := readResponseBody(uResp)
 				if err != nil {
 					errorChannel <- fmt.Errorf("Error reading unique response body: %s", err.Error())
 
@@ -357,12 +372,12 @@ func compareResponses() (uniqueResponses map[*http.Response]int, errorChannel ch
 				// Compare response status code, body content, and content length
 				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength && respBodyMatch {
 					// Similar, increase count
-					uniqueResponses[uResp]++
+					newResponses[uResp]++
 					// Exit inner loop
 					continue
 				} else {
 					// Unique, add to unique responses
-					uniqueResponses[resp] = 0
+					newResponses[resp] = 0
 					// Exit inner loop
 					continue
 				}
@@ -398,9 +413,10 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 		if err != http.ErrNoLocation {
 			fmt.Printf("[Location] %v\n", location.String())
 		}
-		respBody, err := ioutil.ReadAll(resp.Body)
+		respBody, err := readResponseBody(resp)
 		if err != nil {
 			fmt.Println("[Body] ")
+			fmt.Printf("[ERROR] Error reading body: %v.", err)
 		} else {
 			fmt.Printf("[Body]\n%s\n", respBody)
 			// Close the response body
@@ -410,4 +426,17 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 	}
 }
 
-// BUG: Not reading some response bodies. Might be a timeout issue?
+// Function readResponseBody is a helper function to read the content form a response's body,
+// and refill the body with another io.ReadCloser, so that it can be read again.
+func readResponseBody(resp *http.Response) (content []byte, err error) {
+	// Get the content
+	content, err = ioutil.ReadAll(resp.Body)
+
+	// Reset the response body
+	rCloser := ioutil.NopCloser(bytes.NewBuffer(content))
+	resp.Body = rCloser
+
+	return
+}
+
+// TODO: Optimize speed (more concurrency)
