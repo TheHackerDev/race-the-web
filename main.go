@@ -45,7 +45,7 @@ var jar *cookiejar.Jar
 var numRequests int
 
 // Request type
-var requestType string
+var requestMethod string
 
 // Follow redirects
 var followRedirects bool
@@ -58,7 +58,7 @@ var flagTargetURL = flag.String("url", "", "URL to send the request to.")
 var flagBodyFile = flag.String("body", "", "The location (relative or absolute path) of a file containing the body of the request.")
 var flagCookiesFile = flag.String("cookies", "", "The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: cookiename,cookieval")
 var flagNumRequests = flag.Int("requests", 100, "The number of requests to send to the destination URL.")
-var flagRequestType = flag.String("type", "POST", "The request type. Can be either `POST, GET, HEAD, PUT`.")
+var flagRequestMethod = flag.String("method", "POST", "The request type. Can be either `POST, GET, HEAD, PUT`.")
 var flagFollowRedirects = flag.Bool("redirects", false, "Follow redirects (3xx status code in responses)")
 var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
 
@@ -111,15 +111,15 @@ func checkFlags() error {
 	followRedirects = *flagFollowRedirects
 
 	// Set the request type
-	switch strings.ToUpper(*flagRequestType) {
+	switch strings.ToUpper(*flagRequestMethod) {
 	case "POST":
-		requestType = "POST"
+		requestMethod = "POST"
 	case "GET":
-		requestType = "GET"
+		requestMethod = "GET"
 	case "PUT":
-		requestType = "PUT"
+		requestMethod = "PUT"
 	case "HEAD":
-		requestType = "HEAD"
+		requestMethod = "HEAD"
 	default:
 		// Invalid request type specified
 		return fmt.Errorf("Invalid request type specified.")
@@ -207,7 +207,7 @@ func sendRequests() chan error {
 
 	// VERBOSE
 	if verbose {
-		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, requestType, targetURL.String())
+		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, requestMethod, targetURL.String())
 		if body != "" {
 			log.Printf("[VERBOSE] Request body: %s", body)
 		}
@@ -223,7 +223,7 @@ func sendRequests() chan error {
 			requestBody := strings.NewReader(body)
 
 			// Declare HTTP request method and URL
-			req, err := http.NewRequest(requestType, targetURL.String(), requestBody)
+			req, err := http.NewRequest(requestMethod, targetURL.String(), requestBody)
 			if err != nil {
 				errorChannel <- fmt.Errorf("Error in forming request: %v", err.Error())
 				return
