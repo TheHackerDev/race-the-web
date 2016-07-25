@@ -20,12 +20,6 @@ import (
 // urlsInProgress is a wait group, for concurrency
 var urlsInProgress sync.WaitGroup
 
-// Responses is a channel to store the concurrent responses from the target
-var responses chan *http.Response
-
-// UniqueResponses is a map to store all compared responses, and the number of similar responses found
-var uniqueResponses map[*http.Response]int
-
 // RedirectError is a custom error type for following redirects, and can be safely ignored
 type RedirectError struct {
 	RedirectRequest *http.Request
@@ -78,35 +72,36 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Send the requests concurrently
+	log.Println("Requests begin.")
+	responses, errors := sendRequests()
+	if len(errors) != 0 {
+		for err := range errors {
+			log.Printf("[ERROR] %s\n", err.Error())
+		}
+	}
+
 	// Make sure all response bodies are closed- memory leaks otherwise
 	defer func() {
 		for resp := range responses {
 			resp.Body.Close()
 		}
+	}()
+
+	// Compare the responses for uniqueness
+	uniqueResponses, errors := compareResponses(responses)
+	if len(errors) != 0 {
+		for err := range errors {
+			log.Printf("[ERROR] %s\n", err.Error())
+		}
+	}
+
+	// Make sure all response bodies are closed- memory leaks otherwise
+	defer func() {
 		for resp := range uniqueResponses {
 			resp.Body.Close()
 		}
 	}()
-
-	// Initialize an error channel
-	var errChan chan error
-
-	// Send the requests concurrently
-	log.Println("Requests begin.")
-	errChan = sendRequests()
-	if len(errChan) != 0 {
-		for err := range errChan {
-			log.Printf("[ERROR] %s\n", err.Error())
-		}
-	}
-
-	// Compare the responses for uniqueness
-	uniqueResponses, errChan = compareResponses()
-	if len(errChan) != 0 {
-		for err := range errChan {
-			log.Printf("[ERROR] %s\n", err.Error())
-		}
-	}
 
 	// Output the responses
 	outputResponses(uniqueResponses)
@@ -216,10 +211,10 @@ func checkFlags() error {
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
-func sendRequests() chan error {
+func sendRequests() (responses chan *http.Response, errors chan error) {
 	// Initialize the concurrency objects
 	responses = make(chan *http.Response, numRequests)
-	errorChannel := make(chan error, numRequests)
+	errors = make(chan error, numRequests)
 	urlsInProgress.Add(numRequests)
 
 	// VERBOSE
@@ -242,7 +237,7 @@ func sendRequests() chan error {
 			// Declare HTTP request method and URL
 			req, err := http.NewRequest(requestMethod, targetURL.String(), requestBody)
 			if err != nil {
-				errorChannel <- fmt.Errorf("Error in forming request: %v", err.Error())
+				errors <- fmt.Errorf("Error in forming request: %v", err.Error())
 				return
 			}
 
@@ -294,11 +289,11 @@ func sendRequests() chan error {
 						responses <- resp
 					} else {
 						// URL Error, but not a redirect error
-						errorChannel <- fmt.Errorf("Error in request #%v: %v\n", index, err)
+						errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
 					}
 				} else {
 					// Other type of error
-					errorChannel <- fmt.Errorf("Error in request #%v: %v\n", index, err)
+					errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
 				}
 			} else {
 				// Add the response to the responses channel
@@ -317,20 +312,20 @@ func sendRequests() chan error {
 
 	// Close the response and error chanels, so they don't block on the range read
 	close(responses)
-	close(errorChannel)
+	close(errors)
 
-	return errorChannel
+	return
 }
 
 // Function compareResponses compares the responses returned from the requests,
 // and adds them to a map, where the key is an *http.Response, and the value is
 // the number of similar responses observed.
-func compareResponses() (newResponses map[*http.Response]int, errorChannel chan error) {
+func compareResponses(responses chan *http.Response) (newResponses map[*http.Response]int, errors chan error) {
 	// Initialize the unique responses map
 	newResponses = make(map[*http.Response]int)
 
 	// Initialize the error channel
-	errorChannel = make(chan error, len(responses))
+	errors = make(chan error, len(responses))
 
 	// VERBOSE
 	if verbose {
@@ -342,7 +337,7 @@ func compareResponses() (newResponses map[*http.Response]int, errorChannel chan 
 		// Read the response body
 		respBody, err := readResponseBody(resp)
 		if err != nil {
-			errorChannel <- fmt.Errorf("Error reading response body: %s", err.Error())
+			errors <- fmt.Errorf("Error reading response body: %s", err.Error())
 
 			// Exit this loop
 			continue
@@ -357,7 +352,7 @@ func compareResponses() (newResponses map[*http.Response]int, errorChannel chan 
 				// Read the unique response body
 				uRespBody, err := readResponseBody(uResp)
 				if err != nil {
-					errorChannel <- fmt.Errorf("Error reading unique response body: %s", err.Error())
+					errors <- fmt.Errorf("Error reading unique response body: %s", err.Error())
 
 					// Exit the inner loop
 					continue
@@ -391,7 +386,7 @@ func compareResponses() (newResponses map[*http.Response]int, errorChannel chan 
 	}
 
 	// Close the error channel
-	close(errorChannel)
+	close(errors)
 
 	return
 }
@@ -440,3 +435,5 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 }
 
 // TODO: Optimize speed (more concurrency)
+// TODO: Add option to send a second request at the same time, the same number of times (useful for adding 2 values to a database)
+// TODO: Add option to include multiple session cookie values. Cookies for each request will be semicolon-delimited, and newline characters will delimit cookies for different requests.
