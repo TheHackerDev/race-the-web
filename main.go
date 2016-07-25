@@ -39,17 +39,11 @@ var targetURL *url.URL
 // Cookie jar value
 var jar *cookiejar.Jar
 
-// Number of requests
-var numRequests int
-
 // Request type
 var requestMethod string
 
 // Follow redirects
 var followRedirects bool
-
-// Verbose logging enabled
-var verbose bool
 
 // Command-line flags
 var flagTargetURL = flag.String("url", "", "URL to send the request to.")
@@ -74,7 +68,7 @@ func main() {
 
 	// Send the requests concurrently
 	log.Println("Requests begin.")
-	responses, errors := sendRequests()
+	responses, errors := sendRequests(*flagNumRequests)
 	if len(errors) != 0 {
 		for err := range errors {
 			log.Printf("[ERROR] %s\n", err.Error())
@@ -115,9 +109,6 @@ func main() {
 func checkFlags() error {
 	// Parse the flags
 	flag.Parse()
-
-	// Set verbose logging explicitely
-	verbose = *flagVerbose
 
 	// Determine whether to follow redirects
 	followRedirects = *flagFollowRedirects
@@ -161,9 +152,6 @@ func checkFlags() error {
 		// Body file flag not present, exit.
 		return fmt.Errorf("Request body contents required.")
 	}
-
-	// Check the number of requests used for testing
-	numRequests = *flagNumRequests
 
 	// Initialize the cookie jar
 	jar, _ = cookiejar.New(nil)
@@ -211,14 +199,14 @@ func checkFlags() error {
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
-func sendRequests() (responses chan *http.Response, errors chan error) {
+func sendRequests(numRequests int) (responses chan *http.Response, errors chan error) {
 	// Initialize the concurrency objects
 	responses = make(chan *http.Response, numRequests)
 	errors = make(chan error, numRequests)
 	urlsInProgress.Add(numRequests)
 
 	// VERBOSE
-	if verbose {
+	if *flagVerbose {
 		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, requestMethod, targetURL.String())
 		if body != "" {
 			log.Printf("[VERBOSE] Request body: %s", body)
@@ -282,7 +270,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 					if rErr, ok2 := uErr.Err.(*RedirectError); ok2 {
 						// Redirect error
 						// VERBOSE
-						if verbose {
+						if *flagVerbose {
 							log.Printf("[VERBOSE] %v\n", rErr)
 						}
 						// Add the response to the responses channel, because it is still valid
@@ -306,7 +294,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 	urlsInProgress.Wait()
 
 	// VERBOSE
-	if verbose {
+	if *flagVerbose {
 		log.Printf("[VERBOSE] Requests complete.")
 	}
 
@@ -328,7 +316,7 @@ func compareResponses(responses chan *http.Response) (newResponses map[*http.Res
 	errors = make(chan error, len(responses))
 
 	// VERBOSE
-	if verbose {
+	if *flagVerbose {
 		log.Printf("[VERBOSE] Unique response comparison begin.\n")
 	}
 
@@ -381,7 +369,7 @@ func compareResponses(responses chan *http.Response) (newResponses map[*http.Res
 	}
 
 	// VERBOSE
-	if verbose {
+	if *flagVerbose {
 		log.Printf("[VERBOSE] Unique response comparision complete.\n")
 	}
 
