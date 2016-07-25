@@ -308,9 +308,9 @@ func sendRequests(numRequests int) (responses chan *http.Response, errors chan e
 // Function compareResponses compares the responses returned from the requests,
 // and adds them to a map, where the key is an *http.Response, and the value is
 // the number of similar responses observed.
-func compareResponses(responses chan *http.Response) (newResponses map[*http.Response]int, errors chan error) {
+func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.Response]int, errors chan error) {
 	// Initialize the unique responses map
-	newResponses = make(map[*http.Response]int)
+	uniqueResponses = make(map[*http.Response]int)
 
 	// Initialize the error channel
 	errors = make(chan error, len(responses))
@@ -332,11 +332,11 @@ func compareResponses(responses chan *http.Response) (newResponses map[*http.Res
 		}
 
 		// Add an entry, if the unique responses map is empty
-		if len(newResponses) == 0 {
-			newResponses[resp] = 0
+		if len(uniqueResponses) == 0 {
+			uniqueResponses[resp] = 0
 		} else {
 			// Add to the unique responses map, if no similar ones exist
-			for uResp := range newResponses {
+			for uResp := range uniqueResponses {
 				// Read the unique response body
 				uRespBody, err := readResponseBody(uResp)
 				if err != nil {
@@ -355,12 +355,12 @@ func compareResponses(responses chan *http.Response) (newResponses map[*http.Res
 				// Compare response status code, body content, and content length
 				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength && respBodyMatch {
 					// Similar, increase count
-					newResponses[uResp]++
+					uniqueResponses[uResp]++
 					// Exit inner loop
 					continue
 				} else {
 					// Unique, add to unique responses
-					newResponses[resp] = 0
+					uniqueResponses[resp] = 0
 					// Exit inner loop
 					continue
 				}
@@ -422,6 +422,5 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 	return
 }
 
-// TODO: Optimize speed (more concurrency)
 // TODO: Add option to send a second request at the same time, the same number of times (useful for adding 2 values to a database)
 // TODO: Add option to include multiple session cookie values. Cookies for each request will be semicolon-delimited, and newline characters will delimit cookies for different requests.
