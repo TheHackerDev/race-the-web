@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"flag"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
 // urlsInProgress is a wait group, for concurrency
@@ -34,32 +35,33 @@ func (err *RedirectError) Error() string {
 var body string
 
 // Target URL value
-var targetURL *url.URL
+var targetURLs []*url.URL
 
 // Cookie jar value
 var jar *cookiejar.Jar
 
-// Request type
-var requestMethod string
+// Request type (default POST)
+var requestMethod = "POST"
 
-// Follow redirects
-var followRedirects bool
+// Follow redirects (default false)
+var followRedirects = false
 
-// Command-line flags
-var flagTargetURL = flag.String("url", "", "URL to send the request to.")
-var flagBodyFile = flag.String("body", "", "The location (relative or absolute path) of a file containing the body of the request.")
-var flagCookiesFile = flag.String("cookies", "", "The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: cookiename,cookieval")
-var flagNumRequests = flag.Int("requests", 100, "The number of requests to send to the destination URL.")
-var flagRequestMethod = flag.String("method", "POST", "The request type. Can be either `POST, GET, HEAD, PUT`.")
-var flagFollowRedirects = flag.Bool("redirects", false, "Follow redirects (3xx status code in responses)")
-var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
+// Number of requests (default 100)
+var requestsCount = 100
 
+// Verbose logging (default false)
+var verbose = false
+
+// Function main is the entrypoint to the application. It sends the work to the appropriate functions, sequentially.
 func main() {
 	// Change output location of logs
 	log.SetOutput(os.Stdout)
 
-	// Check the flags
-	err := checkFlags()
+	// Set the usage string
+	setUsage()
+
+	// Check the config file
+	err := checkConfig()
 	if err != nil {
 		log.Println(err.Error())
 		flag.Usage()
@@ -68,7 +70,7 @@ func main() {
 
 	// Send the requests concurrently
 	log.Println("Requests begin.")
-	responses, errors := sendRequests(*flagNumRequests)
+	responses, errors := sendRequests()
 	if len(errors) != 0 {
 		for err := range errors {
 			log.Printf("[ERROR] %s\n", err.Error())
@@ -104,77 +106,63 @@ func main() {
 	log.Println("Complete.")
 }
 
-// Function checkFlags checks that all necessary flags are entered, and parses them for contents.
+// Function setUsage overrides the flag package's usage output to something
+// more specific to this package
+func setUsage() {
+	flag.Usage = func() {
+		// TODO: Add in usage output
+	}
+}
+
+// Function checkConfig checks that all necessary configuration fields are given
+// in a valid config file, and parses it for data.
 // Returns a custom error if something went wrong.
-func checkFlags() error {
-	// Parse the flags
-	flag.Parse()
-
-	// Determine whether to follow redirects
-	followRedirects = *flagFollowRedirects
-
-	// Set the request type
-	switch strings.ToUpper(*flagRequestMethod) {
-	case "POST":
-		requestMethod = "POST"
-	case "GET":
-		requestMethod = "GET"
-	case "PUT":
-		requestMethod = "PUT"
-	case "HEAD":
-		requestMethod = "HEAD"
-	default:
-		// Invalid request type specified
-		return fmt.Errorf("Invalid request type specified.")
-	}
-
-	// Ensure that the destination URL is present
-	if *flagTargetURL == "" {
-		return fmt.Errorf("Destination URL required.")
-	}
-
-	// Parse the URL
-	var err error
-	targetURL, err = url.Parse(*flagTargetURL)
+func checkConfig() error {
+	// Viper initialization
+	viper.SetConfigName("config")
+	viper.AddConfigPath(".")
+	viper.SetConfigType("toml")
+	err := viper.ReadInConfig()
 	if err != nil {
-		return fmt.Errorf("Invalid URL provided: %s", *flagTargetURL)
+		return fmt.Errorf("[ERROR] Error reading config file: %s", err.Error())
 	}
 
-	// Get the request body content
-	if *flagBodyFile != "" {
-		buf, err := ioutil.ReadFile(*flagBodyFile)
+	// Check for required values
+	if !viper.IsSet("request.method") || !viper.IsSet("request.targets") {
+		return fmt.Errorf("[ERROR] Method and target(s) must be set.")
+	}
+
+	// Get targets
+	requestMethod = viper.GetString("request.method")
+	for _, target := range viper.GetStringSlice("request.targets") {
+		targetURL, err := url.Parse(target)
 		if err != nil {
-			// Error opening the file
-			return fmt.Errorf("Unable to open the file: %s\n", *flagBodyFile)
+			return fmt.Errorf("[ERROR] Invalid URL provided in targets configuration: %s", target)
 		}
-		body = string(buf)
+		targetURLs = append(targetURLs, targetURL)
+	}
+
+	// Get request method
+	if method := strings.ToUpper(viper.GetString("request.method")); method == "POST" || method == "GET" || method == "PUT" || method == "HEAD" {
+		requestMethod = method
 	} else {
-		// Body file flag not present, exit.
-		return fmt.Errorf("Request body contents required.")
+		// Invalid request type specified
+		return fmt.Errorf("[ERROR] Invalid request method specified: %s", method)
+	}
+
+	// Get the request body, if set
+	if viper.IsSet("request.body") {
+		body = viper.GetString("request.body")
 	}
 
 	// Initialize the cookie jar
 	jar, _ = cookiejar.New(nil)
 	var cookies []*http.Cookie
 	// Get the cookies to pass to the request
-	if *flagCookiesFile != "" {
-		file, err := os.Open(*flagCookiesFile)
-		if err != nil {
-			// Error opening the file
-			return fmt.Errorf("Unable to open the file: %s", *flagCookiesFile)
-		}
-
-		// Ensure the file is closed
-		defer file.Close()
-
-		// Initialize the file scanner
-		scanner := bufio.NewScanner(file)
-
-		// Iterate through the file to get the cookies
-		for scanner.Scan() {
-			// Parse the line to separate the cookie names and values
-			nextLine := scanner.Text()
-			vals := strings.Split(nextLine, ",")
+	if viper.IsSet("request.cookies") {
+		for _, c := range viper.GetStringSlice("request.cookies") {
+			// Split the cookie name and value
+			vals := strings.Split(c, "=")
 			cookieName := strings.TrimSpace(vals[0])
 			cookieValue := strings.TrimSpace(vals[1])
 
@@ -188,26 +176,43 @@ func checkFlags() error {
 			cookies = append(cookies, cookie)
 		}
 
+		// NOTE: Right now, it is assumed that the URLs are on the same domain. If there are use cases in the future where URLs on separate domains need to be used, change this.
 		// Set the cookies to the appropriate URL
-		jar.SetCookies(targetURL, cookies)
-
+		jar.SetCookies(targetURLs[0], cookies)
 	}
 
-	// Made it through with no errors, return
+	// Follow redirects
+	if viper.IsSet("request.redirects") {
+		followRedirects = viper.GetBool("request.redirects")
+	}
+
+	// Request count
+	if viper.IsSet("request.count") {
+		requestsCount = viper.GetInt("request.count")
+	}
+
+	// Verbose logging
+	if viper.IsSet("request.verbose") {
+		verbose = viper.GetBool("request.verbose")
+	}
+
 	return nil
 }
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
-func sendRequests(numRequests int) (responses chan *http.Response, errors chan error) {
+func sendRequests() (responses chan *http.Response, errors chan error) {
 	// Initialize the concurrency objects
-	responses = make(chan *http.Response, numRequests)
-	errors = make(chan error, numRequests)
-	urlsInProgress.Add(numRequests)
+	responses = make(chan *http.Response, requestsCount)
+	errors = make(chan error, requestsCount)
+	urlsInProgress.Add(requestsCount)
+
+	// TODO: Send requests to multiple URLs (if present) the same number of times
+	// RESUME
 
 	// VERBOSE
-	if *flagVerbose {
-		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, requestMethod, targetURL.String())
+	if verbose {
+		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", requestsCount, requestMethod, targetURL.String())
 		if body != "" {
 			log.Printf("[VERBOSE] Request body: %s", body)
 		}
@@ -422,5 +427,5 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 	return
 }
 
-// TODO: Add option to send a second request at the same time, the same number of times (useful for adding 2 values to a database)
+// TODO: Add option to send a second request body or URL at the same time, the same number of times (useful for adding 2 values to a database)
 // TODO: Add option to include multiple session cookie values. Cookies for each request will be semicolon-delimited, and newline characters will delimit cookies for different requests.
