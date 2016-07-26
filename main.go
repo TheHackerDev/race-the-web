@@ -31,6 +31,11 @@ func (err *RedirectError) Error() string {
 	return fmt.Sprintf("Redirect not followed to: %v", err.RedirectRequest.URL.String())
 }
 
+// Configuration contains the data from the configuration file
+// TODO: Put all configuration data in this struct instead, and initialize defaults after
+type Configuration struct {
+}
+
 // Request body content
 var body string
 
@@ -336,13 +341,16 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 			uniqueResponses[resp] = 0
 		} else {
 			// Add to the unique responses map, if no similar ones exist
+			// OPTIMIZATION: Could be made concurrent?
+			// Assume unique, until similar found
+			unique := true
 			for uResp := range uniqueResponses {
 				// Read the unique response body
 				uRespBody, err := readResponseBody(uResp)
 				if err != nil {
 					errors <- fmt.Errorf("Error reading unique response body: %s", err.Error())
 
-					// Exit the inner loop
+					// Error, move on to the next inner loop value
 					continue
 				}
 
@@ -354,16 +362,18 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 
 				// Compare response status code, body content, and content length
 				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength && respBodyMatch {
-					// Similar, increase count
+					// Match, increase count
 					uniqueResponses[uResp]++
+					unique = false
 					// Exit inner loop
-					continue
-				} else {
-					// Unique, add to unique responses
-					uniqueResponses[resp] = 0
-					// Exit inner loop
-					continue
+					break
 				}
+			}
+
+			// Check if unique from all other unique responses
+			if unique {
+				// Unique, add to unique responses
+				uniqueResponses[resp] = 0
 			}
 		}
 	}
