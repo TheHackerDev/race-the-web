@@ -32,34 +32,39 @@ func (err *RedirectError) Error() string {
 }
 
 // Configuration contains the data from the configuration file
-// TODO: Put all configuration data in this struct instead, and initialize defaults after
 type Configuration struct {
+	// Request body content
+	body string
+	// Target URL value
+	targetURLs []*url.URL
+	// Cookie jar value
+	jar *cookiejar.Jar
+	// Request type (default POST)
+	requestMethod string
+	// Follow redirects (default false)
+	followRedirects bool
+	// Number of requests (default 100)
+	requestsCount int
+	// Verbose logging (default false)
+	verbose bool
 }
 
-// Request body content
-var body string
-
-// Target URL value
-var targetURLs []*url.URL
-
-// Cookie jar value
-var jar *cookiejar.Jar
-
-// Request type (default POST)
-var requestMethod = "POST"
-
-// Follow redirects (default false)
-var followRedirects = false
-
-// Number of requests (default 100)
-var requestsCount = 100
-
-// Verbose logging (default false)
-var verbose = false
+var configuration Configuration
 
 // Usage message
-// TODO: Set this usage message
-var usage string = ``
+var usage string
+
+// Function init initializes the program defaults
+func init() {
+	configuration.requestMethod = "POST"
+	configuration.followRedirects = false
+	configuration.requestsCount = 100
+	configuration.verbose = false
+	configuration.targetURLs = make([]*url.URL, 0)
+
+	// TODO: set the usage string
+	usage = ``
+}
 
 // Function main is the entrypoint to the application. It sends the work to the appropriate functions, sequentially.
 func main() {
@@ -131,18 +136,18 @@ func checkConfig() error {
 	}
 
 	// Get targets
-	requestMethod = viper.GetString("request.method")
+	configuration.requestMethod = viper.GetString("request.method")
 	for _, target := range viper.GetStringSlice("request.targets") {
 		targetURL, err := url.Parse(target)
 		if err != nil {
 			return fmt.Errorf("[ERROR] Invalid URL provided in targets configuration: %s", target)
 		}
-		targetURLs = append(targetURLs, targetURL)
+		configuration.targetURLs = append(configuration.targetURLs, targetURL)
 	}
 
 	// Get request method
 	if method := strings.ToUpper(viper.GetString("request.method")); method == "POST" || method == "GET" || method == "PUT" || method == "HEAD" {
-		requestMethod = method
+		configuration.requestMethod = method
 	} else {
 		// Invalid request type specified
 		return fmt.Errorf("[ERROR] Invalid request method specified: %s", method)
@@ -150,11 +155,11 @@ func checkConfig() error {
 
 	// Get the request body, if set
 	if viper.IsSet("request.body") {
-		body = viper.GetString("request.body")
+		configuration.body = viper.GetString("request.body")
 	}
 
 	// Initialize the cookie jar
-	jar, _ = cookiejar.New(nil)
+	configuration.jar, _ = cookiejar.New(nil)
 	var cookies []*http.Cookie
 	// Get the cookies to pass to the request
 	if viper.IsSet("request.cookies") {
@@ -176,22 +181,22 @@ func checkConfig() error {
 
 		// NOTE: Right now, it is assumed that the URLs are on the same domain. If there are use cases in the future where URLs on separate domains need to be used, change this.
 		// Set the cookies to the appropriate URL
-		jar.SetCookies(targetURLs[0], cookies)
+		configuration.jar.SetCookies(configuration.targetURLs[0], cookies)
 	}
 
 	// Follow redirects
 	if viper.IsSet("request.redirects") {
-		followRedirects = viper.GetBool("request.redirects")
+		configuration.followRedirects = viper.GetBool("request.redirects")
 	}
 
 	// Request count
 	if viper.IsSet("request.count") {
-		requestsCount = viper.GetInt("request.count")
+		configuration.requestsCount = viper.GetInt("request.count")
 	}
 
 	// Verbose logging
 	if viper.IsSet("request.verbose") {
-		verbose = viper.GetBool("request.verbose")
+		configuration.verbose = viper.GetBool("request.verbose")
 	}
 
 	return nil
@@ -201,21 +206,21 @@ func checkConfig() error {
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
 func sendRequests() (responses chan *http.Response, errors chan error) {
 	// Initialize the concurrency objects
-	responses = make(chan *http.Response, requestsCount*len(targetURLs))
-	errors = make(chan error, requestsCount*len(targetURLs))
-	urlsInProgress.Add(requestsCount * len(targetURLs))
+	responses = make(chan *http.Response, configuration.requestsCount*len(configuration.targetURLs))
+	errors = make(chan error, configuration.requestsCount*len(configuration.targetURLs))
+	urlsInProgress.Add(configuration.requestsCount * len(configuration.targetURLs))
 
 	// Send requests to multiple URLs (if present) the same number of times
-	for _, target := range targetURLs {
+	for _, target := range configuration.targetURLs {
 		go func(t *url.URL) {
 			// VERBOSE
-			if verbose {
-				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", requestsCount, requestMethod, t.String())
-				if body != "" {
-					log.Printf("[VERBOSE] Request body: %s", body)
+			if configuration.verbose {
+				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.requestsCount, configuration.requestMethod, t.String())
+				if configuration.body != "" {
+					log.Printf("[VERBOSE] Request body: %s", configuration.body)
 				}
 			}
-			for i := 0; i < requestsCount; i++ {
+			for i := 0; i < configuration.requestsCount; i++ {
 				go func(index int) {
 					// Ensure that the waitgroup element is returned
 					defer urlsInProgress.Done()
@@ -223,10 +228,10 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 					// Convert the request body to an io.Reader interface, to pass to the request.
 					// This must be done in the loop, because any call to client.Do() will
 					// read the body contents on the first time, but not any subsequent requests.
-					requestBody := strings.NewReader(body)
+					requestBody := strings.NewReader(configuration.body)
 
 					// Declare HTTP request method and URL
-					req, err := http.NewRequest(requestMethod, t.String(), requestBody)
+					req, err := http.NewRequest(configuration.requestMethod, t.String(), requestBody)
 					if err != nil {
 						errors <- fmt.Errorf("Error in forming request: %v", err.Error())
 						return
@@ -238,9 +243,9 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 					// Ignoring redirects (more accurate output), depending on user flag
 					// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
 					var client http.Client
-					if followRedirects {
+					if configuration.followRedirects {
 						client = http.Client{
-							Jar: jar,
+							Jar: configuration.jar,
 							Transport: &http.Transport{
 								TLSClientConfig: &tls.Config{
 									InsecureSkipVerify: true,
@@ -250,7 +255,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 						}
 					} else {
 						client = http.Client{
-							Jar: jar,
+							Jar: configuration.jar,
 							Transport: &http.Transport{
 								TLSClientConfig: &tls.Config{
 									InsecureSkipVerify: true,
@@ -273,7 +278,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 							if rErr, ok2 := uErr.Err.(*RedirectError); ok2 {
 								// Redirect error
 								// VERBOSE
-								if verbose {
+								if configuration.verbose {
 									log.Printf("[VERBOSE] %v\n", rErr)
 								}
 								// Add the response to the responses channel, because it is still valid
@@ -299,7 +304,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 	urlsInProgress.Wait()
 
 	// VERBOSE
-	if verbose {
+	if configuration.verbose {
 		log.Printf("[VERBOSE] Requests complete.")
 	}
 
@@ -321,7 +326,7 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 	errors = make(chan error, len(responses))
 
 	// VERBOSE
-	if verbose {
+	if configuration.verbose {
 		log.Printf("[VERBOSE] Unique response comparison begin.\n")
 	}
 
@@ -341,7 +346,6 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 			uniqueResponses[resp] = 0
 		} else {
 			// Add to the unique responses map, if no similar ones exist
-			// OPTIMIZATION: Could be made concurrent?
 			// Assume unique, until similar found
 			unique := true
 			for uResp := range uniqueResponses {
@@ -379,7 +383,7 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 	}
 
 	// VERBOSE
-	if verbose {
+	if configuration.verbose {
 		log.Printf("[VERBOSE] Unique response comparision complete.\n")
 	}
 
