@@ -186,7 +186,10 @@ func getConfig(location string) (Configuration, error) {
 	// Set default values
 	config = setDefaults(config)
 
-	// TODO: Check if targets empty, if so, return with an error
+	if len(config.Target) == 0 {
+		// No targets specified
+		return Configuration{}, fmt.Errorf("[ERROR] No targets set. Minimum of 1 target required.")
+	}
 
 	return config, nil
 }
