@@ -72,8 +72,7 @@ var usage string
 
 // Function init initializes the program defaults
 func init() {
-	// TODO: set the usage string
-	usage = ``
+	usage = fmt.Sprintf("Usage: %s config.toml", os.Args[0])
 }
 
 // Function main is the entrypoint to the application. It sends the work to the appropriate functions, sequentially.
