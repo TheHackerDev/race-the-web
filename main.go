@@ -183,14 +183,24 @@ func getConfig(location string) (Configuration, error) {
 		target.CookieJar.SetCookies(targetUrl, cookies)
 	}
 
-	// TODO: Add defaults here, if values not present
-	// Redirects = false
-	// Count = 100
-	// Verbose = false
+	// Set default values
+	config = setDefaults(config)
 
 	// TODO: Check if targets empty, if so, return with an error
 
 	return config, nil
+}
+
+// Function setDefaults sets the default options, if not present in the configuration file.
+// Redirects and verbose are both false, as the default value of a boolean.
+func setDefaults(config Configuration) Configuration {
+	// Count
+	if config.Count == 0 {
+		// Set to default value of 100
+		config.Count = 100
+	}
+
+	return config
 }
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
