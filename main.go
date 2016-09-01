@@ -82,8 +82,15 @@ func main() {
 	log.SetOutput(os.Stdout)
 
 	// Check the config file
+	if len(os.Args) != 2 {
+		// No configuration file provided
+		log.Println("[ERROR] No configuration file location provided.")
+		fmt.Println(usage)
+		os.Exit(1)
+	}
+	configFile := os.Args[1]
 	var err error
-	configuration, err = getConfig()
+	configuration, err = getConfig(configFile)
 	if err != nil {
 		log.Println(err.Error())
 		fmt.Println(usage)
@@ -132,8 +139,8 @@ func main() {
 // in a valid config file, and parses it for data.
 // Returns a Configuration object if successful.
 // Returns an empty Configuration object and a custom error if something went wrong.
-func getConfig() (Configuration, error) {
-	f, err := os.Open("config.toml") // TODO: Add this as a command-line flag
+func getConfig(location string) (Configuration, error) {
+	f, err := os.Open(location)
 	if err != nil {
 		return Configuration{}, fmt.Errorf("[ERROR] Error opening configuration file: %s", err.Error())
 	}
@@ -229,14 +236,15 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 						return
 					}
 
-					// RESUME: Create cookie jar properly (global variable from Target.Cookies slice)
-
 					// Create the HTTP client
 					// Using Cookie jar
 					// Ignoring TLS errors
 					// Ignoring redirects (more accurate output), depending on user flag
 					// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
 					var client http.Client
+
+					// TODO: Add context to http client requests to manually specify timeout options (new in Go 1.7)
+
 					if t.Redirects {
 						client = http.Client{
 							Jar: t.CookieJar,
@@ -430,5 +438,3 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 
 	return
 }
-
-// TODO: Add request URL into response output
