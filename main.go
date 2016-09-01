@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	// Viper is used to parse config files.
-	"github.com/spf13/viper"
+	// Used to parse TOML configuration file
+	"github.com/naoina/toml"
 )
 
 // urlsInProgress is a wait group, for concurrency
@@ -31,23 +31,39 @@ func (err *RedirectError) Error() string {
 	return fmt.Sprintf("Redirect not followed to: %v", err.RedirectRequest.URL.String())
 }
 
-// Configuration contains the data from the configuration file
+// Configuration holds all the configuration data passed in from the config.TOML file.
 type Configuration struct {
-	// Request body content
-	body string
-	// Target URL value
-	targetURLs []*url.URL
-	// Cookie jar value
-	jar *cookiejar.Jar
-	// Request type (default POST)
-	requestMethod string
-	// Follow redirects (default false)
-	followRedirects bool
-	// Number of requests (default 100)
-	requestsCount int
-	// Verbose logging (default false)
-	verbose bool
+	Count   int
+	Verbose bool
+	Target  []Target
 }
+
+type Target struct {
+	Method    string
+	Url       string
+	Body      string
+	Cookies   []string
+	Redirects bool
+	CookieJar http.CookieJar
+}
+
+// REF: Access parts of the Configuration object.
+// fmt.Printf("All: %v\n", config)
+// fmt.Printf("Count: %v\n", config.Count)
+// fmt.Printf("Verbose: %v\n", config.Verbose)
+// fmt.Println("Targets:")
+// for _, target := range config.Target {
+// 	fmt.Printf("\n\tMethod: %s\n", target.Method)
+// 	fmt.Printf("\tURL: %s\n", target.Url)
+// 	fmt.Printf("\tBody: %s\n", target.Body)
+// 	fmt.Printf("\tRedirects: %v\n", target.Redirects)
+// 	for _, cookie := range target.Cookies {
+// 		fmt.Printf("\tCookie: %s\n", cookie)
+// 	}
+// 	// Add the cookie jar after TOML is unmarshaled
+// 	target.CookieJar, _ = cookiejar.New(nil)
+// 	fmt.Printf("\tCookieJar: %v\n", target.CookieJar)
+// }
 
 var configuration Configuration
 
@@ -56,12 +72,6 @@ var usage string
 
 // Function init initializes the program defaults
 func init() {
-	configuration.requestMethod = "POST"
-	configuration.followRedirects = false
-	configuration.requestsCount = 100
-	configuration.verbose = false
-	configuration.targetURLs = make([]*url.URL, 0)
-
 	// TODO: set the usage string
 	usage = ``
 }
@@ -72,7 +82,8 @@ func main() {
 	log.SetOutput(os.Stdout)
 
 	// Check the config file
-	err := checkConfig()
+	var err error
+	configuration, err = getConfig()
 	if err != nil {
 		log.Println(err.Error())
 		fmt.Println(usage)
@@ -117,53 +128,32 @@ func main() {
 	log.Println("Complete.")
 }
 
-// Function checkConfig checks that all necessary configuration fields are given
+// Function getConfig checks that all necessary configuration fields are given
 // in a valid config file, and parses it for data.
-// Returns a custom error if something went wrong.
-func checkConfig() error {
-	// Viper initialization
-	viper.SetConfigName("config")
-	viper.AddConfigPath(".")
-	viper.SetConfigType("toml")
-	err := viper.ReadInConfig()
+// Returns a Configuration object if successful.
+// Returns an empty Configuration object and a custom error if something went wrong.
+func getConfig() (Configuration, error) {
+	f, err := os.Open("config.toml") // TODO: Add this as a command-line flag
 	if err != nil {
-		return fmt.Errorf("[ERROR] Error reading config file: %s", err.Error())
+		return Configuration{}, fmt.Errorf("[ERROR] Error opening configuration file: %s", err.Error())
+	}
+	defer f.Close()
+
+	buf, err := ioutil.ReadAll(f)
+	if err != nil {
+		return Configuration{}, fmt.Errorf("[ERROR] Error reading from configuration file: %s", err.Error())
+	}
+	var config Configuration
+	// Parse all data from the provided configuration file into a Configuration object
+	if err := toml.Unmarshal(buf, &config); err != nil {
+		return Configuration{}, fmt.Errorf("[ERROR] Error with TOML file: %s", err.Error())
 	}
 
-	// Check for required values
-	if !viper.IsSet("request.method") || !viper.IsSet("request.targets") {
-		return fmt.Errorf("[ERROR] Method and target(s) must be set.")
-	}
-
-	// Get targets
-	configuration.requestMethod = viper.GetString("request.method")
-	for _, target := range viper.GetStringSlice("request.targets") {
-		targetURL, err := url.Parse(target)
-		if err != nil {
-			return fmt.Errorf("[ERROR] Invalid URL provided in targets configuration: %s", target)
-		}
-		configuration.targetURLs = append(configuration.targetURLs, targetURL)
-	}
-
-	// Get request method
-	if method := strings.ToUpper(viper.GetString("request.method")); method == "POST" || method == "GET" || method == "PUT" || method == "HEAD" {
-		configuration.requestMethod = method
-	} else {
-		// Invalid request type specified
-		return fmt.Errorf("[ERROR] Invalid request method specified: %s", method)
-	}
-
-	// Get the request body, if set
-	if viper.IsSet("request.body") {
-		configuration.body = viper.GetString("request.body")
-	}
-
-	// Initialize the cookie jar
-	configuration.jar, _ = cookiejar.New(nil)
-	var cookies []*http.Cookie
-	// Get the cookies to pass to the request
-	if viper.IsSet("request.cookies") {
-		for _, c := range viper.GetStringSlice("request.cookies") {
+	// Add the cookies to the cookiejar for each target
+	for _, target := range config.Target {
+		target.CookieJar, _ = cookiejar.New(nil)
+		var cookies []*http.Cookie
+		for _, c := range target.Cookies {
 			// Split the cookie name and value
 			vals := strings.Split(c, "=")
 			cookieName := strings.TrimSpace(vals[0])
@@ -175,52 +165,54 @@ func checkConfig() error {
 				Value: cookieValue,
 			}
 
-			// Add the cookie to the existing slice of cookies
+			// Add the cookie to the new slice of cookies
 			cookies = append(cookies, cookie)
 		}
 
-		// NOTE: Right now, it is assumed that the URLs are on the same domain. If there are use cases in the future where URLs on separate domains need to be used, change this.
-		// Set the cookies to the appropriate URL
-		configuration.jar.SetCookies(configuration.targetURLs[0], cookies)
+		// Associate the cookies with the current target
+		targetUrl, err := url.Parse(target.Url)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("[ERROR] Error parsing target URL: %s", err.Error())
+		}
+		target.CookieJar.SetCookies(targetUrl, cookies)
 	}
 
-	// Follow redirects
-	if viper.IsSet("request.redirects") {
-		configuration.followRedirects = viper.GetBool("request.redirects")
-	}
+	// TODO: Add defaults here, if values not present
+	// Redirects = false
+	// Count = 100
+	// Verbose = false
 
-	// Request count
-	if viper.IsSet("request.count") {
-		configuration.requestsCount = viper.GetInt("request.count")
-	}
+	// TODO: Check if targets empty, if so, return with an error
 
-	// Verbose logging
-	if viper.IsSet("request.verbose") {
-		configuration.verbose = viper.GetBool("request.verbose")
-	}
-
-	return nil
+	return config, nil
 }
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
 func sendRequests() (responses chan *http.Response, errors chan error) {
 	// Initialize the concurrency objects
-	responses = make(chan *http.Response, configuration.requestsCount*len(configuration.targetURLs))
-	errors = make(chan error, configuration.requestsCount*len(configuration.targetURLs))
-	urlsInProgress.Add(configuration.requestsCount * len(configuration.targetURLs))
+	responses = make(chan *http.Response, configuration.Count*len(configuration.Target))
+	errors = make(chan error, configuration.Count*len(configuration.Target))
+	urlsInProgress.Add(configuration.Count * len(configuration.Target))
 
 	// Send requests to multiple URLs (if present) the same number of times
-	for _, target := range configuration.targetURLs {
-		go func(t *url.URL) {
+	for _, target := range configuration.Target {
+		go func(t Target) {
+			// Cast the target URL to a URL type
+			tUrl, err := url.Parse(t.Url)
+			if err != nil {
+				errors <- fmt.Errorf("[ERROR] Error parsing URL %s: %v", t.Url, err.Error())
+				return
+			}
+
 			// VERBOSE
-			if configuration.verbose {
-				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.requestsCount, configuration.requestMethod, t.String())
-				if configuration.body != "" {
-					log.Printf("[VERBOSE] Request body: %s", configuration.body)
+			if configuration.Verbose {
+				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tUrl.String())
+				if t.Body != "" {
+					log.Printf("[VERBOSE] Request body: %s", t.Body)
 				}
 			}
-			for i := 0; i < configuration.requestsCount; i++ {
+			for i := 0; i < configuration.Count; i++ {
 				go func(index int) {
 					// Ensure that the waitgroup element is returned
 					defer urlsInProgress.Done()
@@ -228,14 +220,16 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 					// Convert the request body to an io.Reader interface, to pass to the request.
 					// This must be done in the loop, because any call to client.Do() will
 					// read the body contents on the first time, but not any subsequent requests.
-					requestBody := strings.NewReader(configuration.body)
+					requestBody := strings.NewReader(t.Body)
 
 					// Declare HTTP request method and URL
-					req, err := http.NewRequest(configuration.requestMethod, t.String(), requestBody)
+					req, err := http.NewRequest(t.Method, tUrl.String(), requestBody)
 					if err != nil {
 						errors <- fmt.Errorf("Error in forming request: %v", err.Error())
 						return
 					}
+
+					// RESUME: Create cookie jar properly (global variable from Target.Cookies slice)
 
 					// Create the HTTP client
 					// Using Cookie jar
@@ -243,9 +237,9 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 					// Ignoring redirects (more accurate output), depending on user flag
 					// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
 					var client http.Client
-					if configuration.followRedirects {
+					if t.Redirects {
 						client = http.Client{
-							Jar: configuration.jar,
+							Jar: t.CookieJar,
 							Transport: &http.Transport{
 								TLSClientConfig: &tls.Config{
 									InsecureSkipVerify: true,
@@ -255,7 +249,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 						}
 					} else {
 						client = http.Client{
-							Jar: configuration.jar,
+							Jar: t.CookieJar,
 							Transport: &http.Transport{
 								TLSClientConfig: &tls.Config{
 									InsecureSkipVerify: true,
@@ -278,7 +272,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 							if rErr, ok2 := uErr.Err.(*RedirectError); ok2 {
 								// Redirect error
 								// VERBOSE
-								if configuration.verbose {
+								if configuration.Verbose {
 									log.Printf("[VERBOSE] %v\n", rErr)
 								}
 								// Add the response to the responses channel, because it is still valid
@@ -304,7 +298,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 	urlsInProgress.Wait()
 
 	// VERBOSE
-	if configuration.verbose {
+	if configuration.Verbose {
 		log.Printf("[VERBOSE] Requests complete.")
 	}
 
@@ -326,7 +320,7 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 	errors = make(chan error, len(responses))
 
 	// VERBOSE
-	if configuration.verbose {
+	if configuration.Verbose {
 		log.Printf("[VERBOSE] Unique response comparison begin.\n")
 	}
 
@@ -383,7 +377,7 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 	}
 
 	// VERBOSE
-	if configuration.verbose {
+	if configuration.Verbose {
 		log.Printf("[VERBOSE] Unique response comparision complete.\n")
 	}
 
@@ -397,6 +391,7 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 	// Display the responses
 	log.Printf("Responses:\n")
 	for resp, count := range uniqueResponses {
+		// TODO: Output request here
 		fmt.Printf("Response:\n")
 		fmt.Printf("[Status Code] %v\n", resp.StatusCode)
 		fmt.Printf("[Protocol] %v\n", resp.Proto)
@@ -436,4 +431,4 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 	return
 }
 
-// TODO: Add option to include multiple session cookie values. Cookies for each request will be semicolon-delimited, and newline characters will delimit cookies for different requests.
+// TODO: Add request URL into response output
