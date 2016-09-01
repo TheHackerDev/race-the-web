@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -15,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	// Used to parse TOML configuration file
+	"github.com/naoina/toml"
 )
 
 // urlsInProgress is a wait group, for concurrency
@@ -30,45 +31,74 @@ func (err *RedirectError) Error() string {
 	return fmt.Sprintf("Redirect not followed to: %v", err.RedirectRequest.URL.String())
 }
 
-// Request body content
-var body string
+// Configuration holds all the configuration data passed in from the config.TOML file.
+type Configuration struct {
+	Count   int
+	Verbose bool
+	Target  []Target
+}
 
-// Target URL value
-var targetURL *url.URL
+type Target struct {
+	Method    string
+	Url       string
+	Body      string
+	Cookies   []string
+	Redirects bool
+	CookieJar http.CookieJar
+}
 
-// Cookie jar value
-var jar *cookiejar.Jar
+// REF: Access parts of the Configuration object.
+// fmt.Printf("All: %v\n", config)
+// fmt.Printf("Count: %v\n", config.Count)
+// fmt.Printf("Verbose: %v\n", config.Verbose)
+// fmt.Println("Targets:")
+// for _, target := range config.Target {
+// 	fmt.Printf("\n\tMethod: %s\n", target.Method)
+// 	fmt.Printf("\tURL: %s\n", target.Url)
+// 	fmt.Printf("\tBody: %s\n", target.Body)
+// 	fmt.Printf("\tRedirects: %v\n", target.Redirects)
+// 	for _, cookie := range target.Cookies {
+// 		fmt.Printf("\tCookie: %s\n", cookie)
+// 	}
+// 	// Add the cookie jar after TOML is unmarshaled
+// 	target.CookieJar, _ = cookiejar.New(nil)
+// 	fmt.Printf("\tCookieJar: %v\n", target.CookieJar)
+// }
 
-// Request type
-var requestMethod string
+var configuration Configuration
 
-// Follow redirects
-var followRedirects bool
+// Usage message
+var usage string
 
-// Command-line flags
-var flagTargetURL = flag.String("url", "", "URL to send the request to.")
-var flagBodyFile = flag.String("body", "", "The location (relative or absolute path) of a file containing the body of the request.")
-var flagCookiesFile = flag.String("cookies", "", "The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: cookiename,cookieval")
-var flagNumRequests = flag.Int("requests", 100, "The number of requests to send to the destination URL.")
-var flagRequestMethod = flag.String("method", "POST", "The request type. Can be either `POST, GET, HEAD, PUT`.")
-var flagFollowRedirects = flag.Bool("redirects", false, "Follow redirects (3xx status code in responses)")
-var flagVerbose = flag.Bool("v", false, "Enable verbose logging.")
+// Function init initializes the program defaults
+func init() {
+	usage = fmt.Sprintf("Usage: %s config.toml", os.Args[0])
+}
 
+// Function main is the entrypoint to the application. It sends the work to the appropriate functions, sequentially.
 func main() {
 	// Change output location of logs
 	log.SetOutput(os.Stdout)
 
-	// Check the flags
-	err := checkFlags()
+	// Check the config file
+	if len(os.Args) != 2 {
+		// No configuration file provided
+		log.Println("[ERROR] No configuration file location provided.")
+		fmt.Println(usage)
+		os.Exit(1)
+	}
+	configFile := os.Args[1]
+	var err error
+	configuration, err = getConfig(configFile)
 	if err != nil {
 		log.Println(err.Error())
-		flag.Usage()
+		fmt.Println(usage)
 		os.Exit(1)
 	}
 
 	// Send the requests concurrently
 	log.Println("Requests begin.")
-	responses, errors := sendRequests(*flagNumRequests)
+	responses, errors := sendRequests()
 	if len(errors) != 0 {
 		for err := range errors {
 			log.Printf("[ERROR] %s\n", err.Error())
@@ -104,77 +134,34 @@ func main() {
 	log.Println("Complete.")
 }
 
-// Function checkFlags checks that all necessary flags are entered, and parses them for contents.
-// Returns a custom error if something went wrong.
-func checkFlags() error {
-	// Parse the flags
-	flag.Parse()
-
-	// Determine whether to follow redirects
-	followRedirects = *flagFollowRedirects
-
-	// Set the request type
-	switch strings.ToUpper(*flagRequestMethod) {
-	case "POST":
-		requestMethod = "POST"
-	case "GET":
-		requestMethod = "GET"
-	case "PUT":
-		requestMethod = "PUT"
-	case "HEAD":
-		requestMethod = "HEAD"
-	default:
-		// Invalid request type specified
-		return fmt.Errorf("Invalid request type specified.")
-	}
-
-	// Ensure that the destination URL is present
-	if *flagTargetURL == "" {
-		return fmt.Errorf("Destination URL required.")
-	}
-
-	// Parse the URL
-	var err error
-	targetURL, err = url.Parse(*flagTargetURL)
+// Function getConfig checks that all necessary configuration fields are given
+// in a valid config file, and parses it for data.
+// Returns a Configuration object if successful.
+// Returns an empty Configuration object and a custom error if something went wrong.
+func getConfig(location string) (Configuration, error) {
+	f, err := os.Open(location)
 	if err != nil {
-		return fmt.Errorf("Invalid URL provided: %s", *flagTargetURL)
+		return Configuration{}, fmt.Errorf("[ERROR] Error opening configuration file: %s", err.Error())
+	}
+	defer f.Close()
+
+	buf, err := ioutil.ReadAll(f)
+	if err != nil {
+		return Configuration{}, fmt.Errorf("[ERROR] Error reading from configuration file: %s", err.Error())
+	}
+	var config Configuration
+	// Parse all data from the provided configuration file into a Configuration object
+	if err := toml.Unmarshal(buf, &config); err != nil {
+		return Configuration{}, fmt.Errorf("[ERROR] Error with TOML file: %s", err.Error())
 	}
 
-	// Get the request body content
-	if *flagBodyFile != "" {
-		buf, err := ioutil.ReadFile(*flagBodyFile)
-		if err != nil {
-			// Error opening the file
-			return fmt.Errorf("Unable to open the file: %s\n", *flagBodyFile)
-		}
-		body = string(buf)
-	} else {
-		// Body file flag not present, exit.
-		return fmt.Errorf("Request body contents required.")
-	}
-
-	// Initialize the cookie jar
-	jar, _ = cookiejar.New(nil)
-	var cookies []*http.Cookie
-	// Get the cookies to pass to the request
-	if *flagCookiesFile != "" {
-		file, err := os.Open(*flagCookiesFile)
-		if err != nil {
-			// Error opening the file
-			return fmt.Errorf("Unable to open the file: %s", *flagCookiesFile)
-		}
-
-		// Ensure the file is closed
-		defer file.Close()
-
-		// Initialize the file scanner
-		scanner := bufio.NewScanner(file)
-
-		// Iterate through the file to get the cookies
-		for scanner.Scan() {
-			// Parse the line to separate the cookie names and values
-			nextLine := scanner.Text()
-			vals := strings.Split(nextLine, ",")
+	// Add the cookies to the cookiejar for each target
+	for _, target := range config.Target {
+		target.CookieJar, _ = cookiejar.New(nil)
+		var cookies []*http.Cookie
+		for _, c := range target.Cookies {
+			// Split the cookie name and value
+			vals := strings.Split(c, "=")
 			cookieName := strings.TrimSpace(vals[0])
 			cookieValue := strings.TrimSpace(vals[1])
 
@@ -184,117 +171,154 @@ func checkFlags() error {
 				Value: cookieValue,
 			}
 
-			// Add the cookie to the existing slice of cookies
+			// Add the cookie to the new slice of cookies
 			cookies = append(cookies, cookie)
 		}
 
-		// Set the cookies to the appropriate URL
-		jar.SetCookies(targetURL, cookies)
-
+		// Associate the cookies with the current target
+		targetUrl, err := url.Parse(target.Url)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("[ERROR] Error parsing target URL: %s", err.Error())
+		}
+		target.CookieJar.SetCookies(targetUrl, cookies)
 	}
 
-	// Made it through with no errors, return
-	return nil
+	// Set default values
+	config = setDefaults(config)
+
+	if len(config.Target) == 0 {
+		// No targets specified
+		return Configuration{}, fmt.Errorf("[ERROR] No targets set. Minimum of 1 target required.")
+	}
+
+	return config, nil
+}
+
+// Function setDefaults sets the default options, if not present in the configuration file.
+// Redirects and verbose are both false, as the default value of a boolean.
+func setDefaults(config Configuration) Configuration {
+	// Count
+	if config.Count == 0 {
+		// Set to default value of 100
+		config.Count = 100
+	}
+
+	return config
 }
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
-func sendRequests(numRequests int) (responses chan *http.Response, errors chan error) {
+func sendRequests() (responses chan *http.Response, errors chan error) {
 	// Initialize the concurrency objects
-	responses = make(chan *http.Response, numRequests)
-	errors = make(chan error, numRequests)
-	urlsInProgress.Add(numRequests)
+	responses = make(chan *http.Response, configuration.Count*len(configuration.Target))
+	errors = make(chan error, configuration.Count*len(configuration.Target))
+	urlsInProgress.Add(configuration.Count * len(configuration.Target))
 
-	// VERBOSE
-	if *flagVerbose {
-		log.Printf("[VERBOSE] Sending %d %s requests to %s\n", numRequests, requestMethod, targetURL.String())
-		if body != "" {
-			log.Printf("[VERBOSE] Request body: %s", body)
-		}
-	}
-	for i := 0; i < numRequests; i++ {
-		go func(index int) {
-			// Ensure that the waitgroup element is returned
-			defer urlsInProgress.Done()
-
-			// Convert the request body to an io.Reader interface, to pass to the request.
-			// This must be done in the loop, because any call to client.Do() will
-			// read the body contents on the first time, but not any subsequent requests.
-			requestBody := strings.NewReader(body)
-
-			// Declare HTTP request method and URL
-			req, err := http.NewRequest(requestMethod, targetURL.String(), requestBody)
+	// Send requests to multiple URLs (if present) the same number of times
+	for _, target := range configuration.Target {
+		go func(t Target) {
+			// Cast the target URL to a URL type
+			tUrl, err := url.Parse(t.Url)
 			if err != nil {
-				errors <- fmt.Errorf("Error in forming request: %v", err.Error())
+				errors <- fmt.Errorf("[ERROR] Error parsing URL %s: %v", t.Url, err.Error())
 				return
 			}
 
-			// Create the HTTP client
-			// Using Cookie jar
-			// Ignoring TLS errors
-			// Ignoring redirects (more accurate output), depending on user flag
-			// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
-			var client http.Client
-			if followRedirects {
-				client = http.Client{
-					Jar: jar,
-					Transport: &http.Transport{
-						TLSClientConfig: &tls.Config{
-							InsecureSkipVerify: true,
-						},
-					},
-					Timeout: 20 * time.Second,
-				}
-			} else {
-				client = http.Client{
-					Jar: jar,
-					Transport: &http.Transport{
-						TLSClientConfig: &tls.Config{
-							InsecureSkipVerify: true,
-						},
-					},
-					CheckRedirect: func(req *http.Request, via []*http.Request) error {
-						// Craft the custom error
-						redirectError := RedirectError{req}
-						return &redirectError
-					},
-					Timeout: 20 * time.Second,
+			// VERBOSE
+			if configuration.Verbose {
+				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tUrl.String())
+				if t.Body != "" {
+					log.Printf("[VERBOSE] Request body: %s", t.Body)
 				}
 			}
+			for i := 0; i < configuration.Count; i++ {
+				go func(index int) {
+					// Ensure that the waitgroup element is returned
+					defer urlsInProgress.Done()
 
-			// Make the request
-			resp, err := client.Do(req)
-			// Check the error type from the request
-			if err != nil {
-				if uErr, ok := err.(*url.Error); ok {
-					if rErr, ok2 := uErr.Err.(*RedirectError); ok2 {
-						// Redirect error
-						// VERBOSE
-						if *flagVerbose {
-							log.Printf("[VERBOSE] %v\n", rErr)
-						}
-						// Add the response to the responses channel, because it is still valid
-						responses <- resp
-					} else {
-						// URL Error, but not a redirect error
-						errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
+					// Convert the request body to an io.Reader interface, to pass to the request.
+					// This must be done in the loop, because any call to client.Do() will
+					// read the body contents on the first time, but not any subsequent requests.
+					requestBody := strings.NewReader(t.Body)
+
+					// Declare HTTP request method and URL
+					req, err := http.NewRequest(t.Method, tUrl.String(), requestBody)
+					if err != nil {
+						errors <- fmt.Errorf("Error in forming request: %v", err.Error())
+						return
 					}
-				} else {
-					// Other type of error
-					errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
-				}
-			} else {
-				// Add the response to the responses channel
-				responses <- resp
+
+					// Create the HTTP client
+					// Using Cookie jar
+					// Ignoring TLS errors
+					// Ignoring redirects (more accurate output), depending on user flag
+					// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
+					var client http.Client
+
+					// TODO: Add context to http client requests to manually specify timeout options (new in Go 1.7)
+
+					if t.Redirects {
+						client = http.Client{
+							Jar: t.CookieJar,
+							Transport: &http.Transport{
+								TLSClientConfig: &tls.Config{
+									InsecureSkipVerify: true,
+								},
+							},
+							Timeout: 20 * time.Second,
+						}
+					} else {
+						client = http.Client{
+							Jar: t.CookieJar,
+							Transport: &http.Transport{
+								TLSClientConfig: &tls.Config{
+									InsecureSkipVerify: true,
+								},
+							},
+							CheckRedirect: func(req *http.Request, via []*http.Request) error {
+								// Craft the custom error
+								redirectError := RedirectError{req}
+								return &redirectError
+							},
+							Timeout: 20 * time.Second,
+						}
+					}
+
+					// Make the request
+					resp, err := client.Do(req)
+					// Check the error type from the request
+					if err != nil {
+						if uErr, ok := err.(*url.Error); ok {
+							if rErr, ok2 := uErr.Err.(*RedirectError); ok2 {
+								// Redirect error
+								// VERBOSE
+								if configuration.Verbose {
+									log.Printf("[VERBOSE] %v\n", rErr)
+								}
+								// Add the response to the responses channel, because it is still valid
+								responses <- resp
+							} else {
+								// URL Error, but not a redirect error
+								errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
+							}
+						} else {
+							// Other type of error
+							errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
+						}
+					} else {
+						// Add the response to the responses channel
+						responses <- resp
+					}
+				}(i)
 			}
-		}(i)
+		}(target)
 	}
 
 	// Wait for the URLs to finish sending
 	urlsInProgress.Wait()
 
 	// VERBOSE
-	if *flagVerbose {
+	if configuration.Verbose {
 		log.Printf("[VERBOSE] Requests complete.")
 	}
 
@@ -316,7 +340,7 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 	errors = make(chan error, len(responses))
 
 	// VERBOSE
-	if *flagVerbose {
+	if configuration.Verbose {
 		log.Printf("[VERBOSE] Unique response comparison begin.\n")
 	}
 
@@ -336,13 +360,15 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 			uniqueResponses[resp] = 0
 		} else {
 			// Add to the unique responses map, if no similar ones exist
+			// Assume unique, until similar found
+			unique := true
 			for uResp := range uniqueResponses {
 				// Read the unique response body
 				uRespBody, err := readResponseBody(uResp)
 				if err != nil {
 					errors <- fmt.Errorf("Error reading unique response body: %s", err.Error())
 
-					// Exit the inner loop
+					// Error, move on to the next inner loop value
 					continue
 				}
 
@@ -354,22 +380,24 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 
 				// Compare response status code, body content, and content length
 				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength && respBodyMatch {
-					// Similar, increase count
+					// Match, increase count
 					uniqueResponses[uResp]++
+					unique = false
 					// Exit inner loop
-					continue
-				} else {
-					// Unique, add to unique responses
-					uniqueResponses[resp] = 0
-					// Exit inner loop
-					continue
+					break
 				}
+			}
+
+			// Check if unique from all other unique responses
+			if unique {
+				// Unique, add to unique responses
+				uniqueResponses[resp] = 0
 			}
 		}
 	}
 
 	// VERBOSE
-	if *flagVerbose {
+	if configuration.Verbose {
 		log.Printf("[VERBOSE] Unique response comparision complete.\n")
 	}
 
@@ -383,6 +411,7 @@ func outputResponses(uniqueResponses map[*http.Response]int) {
 	// Display the responses
 	log.Printf("Responses:\n")
 	for resp, count := range uniqueResponses {
+		// TODO: Output request here
 		fmt.Printf("Response:\n")
 		fmt.Printf("[Status Code] %v\n", resp.StatusCode)
 		fmt.Printf("[Protocol] %v\n", resp.Proto)
@@ -421,6 +450,3 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 
 	return
 }
-
-// TODO: Add option to send a second request at the same time, the same number of times (useful for adding 2 values to a database)
-// TODO: Add option to include multiple session cookie values. Cookies for each request will be semicolon-delimited, and newline characters will delimit cookies for different requests.

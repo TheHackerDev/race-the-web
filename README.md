@@ -31,20 +31,15 @@ For more of the nitty-gritty details on why Go is so fast, see [Dave Cheney](htt
 
 ## Usage
 
-This is a command-line tool. Use the following flags to run the program:
+This is a command-line tool, with all configuration set in a configuration file.
 
-- `-url`: The URL to send the request to.
-- `-body`: The location (relative or absolute path) of a file containing the body of the request.
-- `-cookies`: The location (relative or absolute path) of a file containing newline-separate cookie values being sent along with the request. Cookie names and values are separated by a comma. For example: `cookiename,cookieval`.
-- `-requests`: The number of requests to send to the destination URL. (default: `100`)
-- `-type`: The request type. Can be either `POST`, `GET`, `HEAD`, or `PUT`. (default: `POST`)
-- `-redirects`: Follow redirects (`3xx` status code in responses).
-- `-v`: Enable verbose logging to the console.
+### Configuration File
 
-**Example:**
+#### TOML
 
-- `race-the-web -url=http://www.example.com/ -body=body.txt -cookies=cookies.txt -requests=100 -type=POST -v`
-  - Sends 100 POST requests to `http://www.example.com/`, with the cookies found in the file `cookies.txt` and the body contents found in the file `body.txt` (both files being located in the same directory as the program is being run from). Verbose logging is also enabled.
+TOML Spec: https://github.com/toml-lang/toml
+
+**Example configuration file included (_example.toml_)**
 
 ## Binaries
 

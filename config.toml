@@ -1,0 +1,32 @@
+# Sample Configurations
+
+# Send 100 requests to each target
+count = 100
+# Enable verbose logging
+verbose = true
+
+# Specify the first target
+[[target]]
+    # Use the GET request method
+    method = "GET"
+    # Set the URL target. Any valid URL is accepted, including ports, https, and parameters.
+    url = "https://example.com/pay?val=1000"
+    # Set the request body.
+    # body = "body=text"
+    # Set the cookie values to send with the request to this target. Must be an array.
+    cookies = ["PHPSESSIONID=12345","JSESSIONID=67890"]
+    # Follow redirects
+    redirects = true
+
+# Specify the second target
+[[target]]
+    # Use the POST request method
+    method = "POST"
+    # Set the URL target. Any valid URL is accepted, including ports, https, and parameters.
+    url = "https://example.com/pay"
+    # Set the request body.
+    body = "val=1000"
+    # Set the cookie values to send with the request to this target. Must be an array.
+    cookies = ["PHPSESSIONID=ABCDE","JSESSIONID=FGHIJ"]
+    # Do not follow redirects
+    redirects = false
