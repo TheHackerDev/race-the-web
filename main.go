@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +68,19 @@ type Target struct {
 
 var configuration Configuration
 
+// Type ResponseInfo details information about responses received from targets
+type ResponseInfo struct {
+	Response *http.Response
+	Target   Target
+}
+
+// Type UniqueResponseInfo details information about unique responses received from targets
+type UniqueResponseInfo struct {
+	Response *http.Response
+	Targets  []Target
+	Count    int
+}
+
 // Usage message
 var usage string
 
@@ -107,8 +121,8 @@ func main() {
 
 	// Make sure all response bodies are closed- memory leaks otherwise
 	defer func() {
-		for resp := range responses {
-			resp.Body.Close()
+		for respInfo := range responses {
+			respInfo.Response.Body.Close()
 		}
 	}()
 
@@ -122,8 +136,8 @@ func main() {
 
 	// Make sure all response bodies are closed- memory leaks otherwise
 	defer func() {
-		for resp := range uniqueResponses {
-			resp.Body.Close()
+		for _, uRespInfo := range uniqueResponses {
+			uRespInfo.Response.Body.Close()
 		}
 	}()
 
@@ -208,9 +222,9 @@ func setDefaults(config Configuration) Configuration {
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
-func sendRequests() (responses chan *http.Response, errors chan error) {
+func sendRequests() (responses chan ResponseInfo, errors chan error) {
 	// Initialize the concurrency objects
-	responses = make(chan *http.Response, configuration.Count*len(configuration.Target))
+	responses = make(chan ResponseInfo, configuration.Count*len(configuration.Target))
 	errors = make(chan error, configuration.Count*len(configuration.Target))
 	urlsInProgress.Add(configuration.Count * len(configuration.Target))
 
@@ -296,7 +310,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 									log.Printf("[VERBOSE] %v\n", rErr)
 								}
 								// Add the response to the responses channel, because it is still valid
-								responses <- resp
+								responses <- ResponseInfo{Response: resp, Target: t}
 							} else {
 								// URL Error, but not a redirect error
 								errors <- fmt.Errorf("Error in request #%v: %v\n", index, err)
@@ -307,7 +321,7 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 						}
 					} else {
 						// Add the response to the responses channel
-						responses <- resp
+						responses <- ResponseInfo{Response: resp, Target: t}
 					}
 				}(i)
 			}
@@ -332,11 +346,8 @@ func sendRequests() (responses chan *http.Response, errors chan error) {
 // Function compareResponses compares the responses returned from the requests,
 // and adds them to a map, where the key is an *http.Response, and the value is
 // the number of similar responses observed.
-func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.Response]int, errors chan error) {
-	// Initialize the unique responses map
-	uniqueResponses = make(map[*http.Response]int)
-
-	// Initialize the error channel
+func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResponseInfo, errors chan error) {
+	// Initialize the channels
 	errors = make(chan error, len(responses))
 
 	// VERBOSE
@@ -345,9 +356,9 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 	}
 
 	// Compare the responses, one at a time
-	for resp := range responses {
+	for respInfo := range responses {
 		// Read the response body
-		respBody, err := readResponseBody(resp)
+		respBody, err := readResponseBody(respInfo.Response)
 		if err != nil {
 			errors <- fmt.Errorf("Error reading response body: %s", err.Error())
 
@@ -355,16 +366,17 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 			continue
 		}
 
-		// Add an entry, if the unique responses map is empty
 		if len(uniqueResponses) == 0 {
-			uniqueResponses[resp] = 0
+			// The unique responses slice is empty, add the current response as the first
+			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{Count: 1, Response: respInfo.Response, Targets: []Target{respInfo.Target}})
 		} else {
-			// Add to the unique responses map, if no similar ones exist
-			// Assume unique, until similar found
-			unique := true
-			for uResp := range uniqueResponses {
+			// Add to the unique responses channel, if no similar ones exist
+			unique := true // Assume unique, until similar found
+			j := len(uniqueResponses)
+			for i := 0; i < j; i++ {
+				uRespInfo := uniqueResponses[i]
 				// Read the unique response body
-				uRespBody, err := readResponseBody(uResp)
+				uRespBody, err := readResponseBody(uRespInfo.Response)
 				if err != nil {
 					errors <- fmt.Errorf("Error reading unique response body: %s", err.Error())
 
@@ -379,9 +391,22 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 				}
 
 				// Compare response status code, body content, and content length
-				if resp.StatusCode == uResp.StatusCode && resp.ContentLength == uResp.ContentLength && respBodyMatch {
-					// Match, increase count
-					uniqueResponses[uResp]++
+				if respInfo.Response.StatusCode == uRespInfo.Response.StatusCode && respInfo.Response.ContentLength == uRespInfo.Response.ContentLength && respBodyMatch {
+					// Check for the same request, assume unique target
+					uniqueTarget := true
+					for _, target := range uRespInfo.Targets {
+						if !reflect.DeepEqual(target, respInfo.Target) {
+							// Different target, mark as unique and break
+							uniqueTarget = false
+							break
+						}
+					}
+					// Match. No need to continue this loop.
+					uRespInfo.Count++
+					if uniqueTarget {
+						// Append the new target to the unique response
+						uRespInfo.Targets = append(uRespInfo.Targets, respInfo.Target)
+					}
 					unique = false
 					// Exit inner loop
 					break
@@ -391,7 +416,9 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 			// Check if unique from all other unique responses
 			if unique {
 				// Unique, add to unique responses
-				uniqueResponses[resp] = 0
+				uniqueResponses = append(uniqueResponses, UniqueResponseInfo{Count: 1, Response: respInfo.Response, Targets: []Target{respInfo.Target}})
+				// Increase loop count to account for newly added unique response
+				j++
 			}
 		}
 	}
@@ -401,40 +428,49 @@ func compareResponses(responses chan *http.Response) (uniqueResponses map[*http.
 		log.Printf("[VERBOSE] Unique response comparision complete.\n")
 	}
 
-	// Close the error channel
+	// Close the channels
 	close(errors)
 
 	return
 }
 
-func outputResponses(uniqueResponses map[*http.Response]int) {
+func outputResponses(uniqueResponses []UniqueResponseInfo) {
 	// Display the responses
 	log.Printf("Responses:\n")
-	for resp, count := range uniqueResponses {
-		// TODO: Output request here
+	for _, uRespInfo := range uniqueResponses {
 		fmt.Printf("Response:\n")
-		fmt.Printf("[Status Code] %v\n", resp.StatusCode)
-		fmt.Printf("[Protocol] %v\n", resp.Proto)
-		if len(resp.Header) != 0 {
+		fmt.Printf("[Status Code] %v\n", uRespInfo.Response.StatusCode)
+		fmt.Printf("[Protocol] %v\n", uRespInfo.Response.Proto)
+		if len(uRespInfo.Response.Header) != 0 {
 			fmt.Println("[Headers]")
-			for header, value := range resp.Header {
+			for header, value := range uRespInfo.Response.Header {
 				fmt.Printf("\t%v: %v\n", header, value)
 			}
 		}
-		location, err := resp.Location()
+		location, err := uRespInfo.Response.Location()
 		if err != http.ErrNoLocation {
 			fmt.Printf("[Location] %v\n", location.String())
 		}
-		respBody, err := readResponseBody(resp)
+		respBody, err := readResponseBody(uRespInfo.Response)
 		if err != nil {
 			fmt.Println("[Body] ")
 			fmt.Printf("[ERROR] Error reading body: %v.", err)
 		} else {
 			fmt.Printf("[Body]\n%s\n", respBody)
 			// Close the response body
-			resp.Body.Close()
+			uRespInfo.Response.Body.Close()
 		}
-		fmt.Printf("Similar: %v\n\n", count)
+		fmt.Printf("Similar: %v\n", uRespInfo.Count-1)
+		fmt.Printf("Requests:\n")
+		for _, target := range uRespInfo.Targets {
+			fmt.Printf("\tURL: %s\n", target.Url)
+			fmt.Printf("\tMethod: %s\n", target.Method)
+			fmt.Printf("\tBody: %s\n", target.Body)
+			fmt.Printf("\tCookies: %v\n", target.Cookies)
+			fmt.Printf("\tRedirects: %t\n", target.Redirects)
+			fmt.Println()
+		}
+		fmt.Println()
 	}
 }
 
