@@ -461,10 +461,16 @@ func outputResponses(uniqueResponses []UniqueResponseInfo) {
 			uRespInfo.Response.Body.Close()
 		}
 		fmt.Printf("Similar: %v\n", uRespInfo.Count-1)
-		fmt.Printf("Requests issued:\n")
+		fmt.Printf("Requests:\n")
 		for _, target := range uRespInfo.Targets {
-			fmt.Printf("%v\n", target)
+			fmt.Printf("\tURL: %s\n", target.Url)
+			fmt.Printf("\tMethod: %s\n", target.Method)
+			fmt.Printf("\tBody: %s\n", target.Body)
+			fmt.Printf("\tCookies: %v\n", target.Cookies)
+			fmt.Printf("\tRedirects: %t\n", target.Redirects)
+			fmt.Println()
 		}
+		fmt.Println()
 	}
 }
 
