@@ -374,10 +374,10 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{Count: 1, Response: respInfo.Response, Targets: []Target{respInfo.Target}})
 		} else {
 			// Add to the unique responses channel, if no similar ones exist
-			unique := true // Assume unique, until similar found
+			match := false // Assume unique, until similar found
 			j := len(uniqueResponses)
 			for i := 0; i < j; i++ {
-				uRespInfo := uniqueResponses[i]
+				uRespInfo := &uniqueResponses[i]
 				// Read the unique response body
 				uRespBody, err := readResponseBody(uRespInfo.Response)
 				if err != nil {
@@ -395,29 +395,30 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 
 				// Compare response status code, body content, and content length
 				if respInfo.Response.StatusCode == uRespInfo.Response.StatusCode && respInfo.Response.ContentLength == uRespInfo.Response.ContentLength && respBodyMatch {
-					// Check for the same request, assume unique target
-					uniqueTarget := true
+					// Match found
+					match = true
+					uRespInfo.Count++
+
+					// Check for the same request, using the target information
+					targetMatch := false
 					for _, target := range uRespInfo.Targets {
-						if !reflect.DeepEqual(target, respInfo.Target) {
-							// Different target, mark as unique and break
-							uniqueTarget = false
+						if reflect.DeepEqual(target, respInfo.Target) {
+							// Target match found
+							targetMatch = true
 							break
 						}
 					}
-					// Match. No need to continue this loop.
-					uRespInfo.Count++
-					if uniqueTarget {
+					if !targetMatch {
 						// Append the new target to the unique response
 						uRespInfo.Targets = append(uRespInfo.Targets, respInfo.Target)
 					}
-					unique = false
 					// Exit inner loop
 					break
 				}
 			}
 
-			// Check if unique from all other unique responses
-			if unique {
+			// Check if response matches another response already found
+			if !match {
 				// Unique, add to unique responses
 				uniqueResponses = append(uniqueResponses, UniqueResponseInfo{Count: 1, Response: respInfo.Response, Targets: []Target{respInfo.Target}})
 				// Increase loop count to account for newly added unique response
