@@ -17,6 +17,8 @@ import (
 
 	// Used to parse TOML configuration file
 	"github.com/naoina/toml"
+	// Used to output in colour to the console
+	"github.com/fatih/color"
 )
 
 // urlsInProgress is a wait group, for concurrency
@@ -84,6 +86,9 @@ type UniqueResponseInfo struct {
 // Usage message
 var usage string
 
+// Colour outputs
+var outError = color.New(color.FgRed).PrintfFunc()
+
 // Function init initializes the program defaults
 func init() {
 	usage = fmt.Sprintf("Usage: %s config.toml", os.Args[0])
@@ -97,7 +102,7 @@ func main() {
 	// Check the config file
 	if len(os.Args) != 2 {
 		// No configuration file provided
-		log.Println("[ERROR] No configuration file location provided.")
+		outError("[ERROR] No configuration file location provided.")
 		fmt.Println(usage)
 		os.Exit(1)
 	}
@@ -105,7 +110,7 @@ func main() {
 	var err error
 	configuration, err = getConfig(configFile)
 	if err != nil {
-		log.Println(err.Error())
+		outError("[ERROR] %s\n", err.Error())
 		fmt.Println(usage)
 		os.Exit(1)
 	}
@@ -115,9 +120,10 @@ func main() {
 	responses, errors := sendRequests()
 	if len(errors) != 0 {
 		for err := range errors {
-			log.Printf("[ERROR] %s\n", err.Error())
+			outError("[ERROR] %s\n", err.Error())
 		}
 	}
+	log.Println("Requests completed.")
 
 	// Make sure all response bodies are closed- memory leaks otherwise
 	defer func() {
@@ -130,7 +136,7 @@ func main() {
 	uniqueResponses, errors := compareResponses(responses)
 	if len(errors) != 0 {
 		for err := range errors {
-			log.Printf("[ERROR] %s\n", err.Error())
+			outError("[ERROR] %s\n", err.Error())
 		}
 	}
 
@@ -143,9 +149,6 @@ func main() {
 
 	// Output the responses
 	outputResponses(uniqueResponses)
-
-	// Echo completion
-	log.Println("Complete.")
 }
 
 // Function getConfig checks that all necessary configuration fields are given
@@ -155,18 +158,18 @@ func main() {
 func getConfig(location string) (Configuration, error) {
 	f, err := os.Open(location)
 	if err != nil {
-		return Configuration{}, fmt.Errorf("[ERROR] Error opening configuration file: %s", err.Error())
+		return Configuration{}, fmt.Errorf("Error opening configuration file: %s", err.Error())
 	}
 	defer f.Close()
 
 	buf, err := ioutil.ReadAll(f)
 	if err != nil {
-		return Configuration{}, fmt.Errorf("[ERROR] Error reading from configuration file: %s", err.Error())
+		return Configuration{}, fmt.Errorf("Error reading from configuration file: %s", err.Error())
 	}
 	var config Configuration
 	// Parse all data from the provided configuration file into a Configuration object
 	if err := toml.Unmarshal(buf, &config); err != nil {
-		return Configuration{}, fmt.Errorf("[ERROR] Error with TOML file: %s", err.Error())
+		return Configuration{}, fmt.Errorf("Error with TOML file: %s", err.Error())
 	}
 
 	// Add the cookies to the cookiejar for each target
@@ -192,7 +195,7 @@ func getConfig(location string) (Configuration, error) {
 		// Associate the cookies with the current target
 		targetUrl, err := url.Parse(target.Url)
 		if err != nil {
-			return Configuration{}, fmt.Errorf("[ERROR] Error parsing target URL: %s", err.Error())
+			return Configuration{}, fmt.Errorf("Error parsing target URL: %s", err.Error())
 		}
 		target.CookieJar.SetCookies(targetUrl, cookies)
 	}
@@ -202,7 +205,7 @@ func getConfig(location string) (Configuration, error) {
 
 	if len(config.Target) == 0 {
 		// No targets specified
-		return Configuration{}, fmt.Errorf("[ERROR] No targets set. Minimum of 1 target required.")
+		return Configuration{}, fmt.Errorf("No targets set. Minimum of 1 target required.")
 	}
 
 	return config, nil
@@ -234,7 +237,7 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 			// Cast the target URL to a URL type
 			tUrl, err := url.Parse(t.Url)
 			if err != nil {
-				errors <- fmt.Errorf("[ERROR] Error parsing URL %s: %v", t.Url, err.Error())
+				errors <- fmt.Errorf("Error parsing URL %s: %v", t.Url, err.Error())
 				return
 			}
 
@@ -436,9 +439,10 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 
 func outputResponses(uniqueResponses []UniqueResponseInfo) {
 	// Display the responses
-	log.Printf("Responses:\n")
+	fmt.Printf("Unique Responses:\n\n")
 	for _, uRespInfo := range uniqueResponses {
-		fmt.Printf("Response:\n")
+		fmt.Println("**************************************************")
+		fmt.Printf("RESPONSE:\n")
 		fmt.Printf("[Status Code] %v\n", uRespInfo.Response.StatusCode)
 		fmt.Printf("[Protocol] %v\n", uRespInfo.Response.Proto)
 		if len(uRespInfo.Response.Header) != 0 {
@@ -454,14 +458,14 @@ func outputResponses(uniqueResponses []UniqueResponseInfo) {
 		respBody, err := readResponseBody(uRespInfo.Response)
 		if err != nil {
 			fmt.Println("[Body] ")
-			fmt.Printf("[ERROR] Error reading body: %v.", err)
+			outError("[ERROR] Error reading body: %v.", err)
 		} else {
 			fmt.Printf("[Body]\n%s\n", respBody)
 			// Close the response body
 			uRespInfo.Response.Body.Close()
 		}
 		fmt.Printf("Similar: %v\n", uRespInfo.Count-1)
-		fmt.Printf("Requests:\n")
+		fmt.Printf("REQUESTS:\n")
 		for _, target := range uRespInfo.Targets {
 			fmt.Printf("\tURL: %s\n", target.Url)
 			fmt.Printf("\tMethod: %s\n", target.Method)
@@ -470,7 +474,6 @@ func outputResponses(uniqueResponses []UniqueResponseInfo) {
 			fmt.Printf("\tRedirects: %t\n", target.Redirects)
 			fmt.Println()
 		}
-		fmt.Println()
 	}
 }
 
