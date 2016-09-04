@@ -490,3 +490,6 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 
 	return
 }
+
+// TODO: Add option for output (boolean), which toggles whether to compare responses and display responses in the output.
+// Useful in cases where there is another way to validate the race condition (in the bank test application, for example)
