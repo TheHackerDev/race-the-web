@@ -276,6 +276,13 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 					cookieStr := strings.Join(t.Cookies, ";")
 					req.Header.Add("Cookie", cookieStr)
 
+					// Add content-type to POST requests (some applications require this to properly process POST requests)
+					// TODO: Find any bugs around other request types
+					if t.Method == "POST" {
+						req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+					}
+
 					// TODO: Add context to http client requests to manually specify timeout options (new in Go 1.7)
 
 					if t.Redirects {
