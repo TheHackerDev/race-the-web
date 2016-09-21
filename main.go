@@ -272,6 +272,10 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 					// Implementing a connection timeouts, for slow clients & servers (especially important with race conditions on the server)
 					var client http.Client
 
+					// TEMP- append cookies directly to the request
+					cookieStr := strings.Join(t.Cookies, ";")
+					req.Header.Add("Cookie", cookieStr)
+
 					// TODO: Add context to http client requests to manually specify timeout options (new in Go 1.7)
 
 					if t.Redirects {
