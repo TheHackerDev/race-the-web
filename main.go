@@ -41,9 +41,10 @@ type Configuration struct {
 	Target  []Target
 }
 
+// Target is a struct to hold information about an individual target URL endpoint.
 type Target struct {
 	Method    string
-	Url       string
+	URL       string
 	Body      string
 	Cookies   []string
 	Redirects bool
@@ -70,13 +71,13 @@ type Target struct {
 
 var configuration Configuration
 
-// Type ResponseInfo details information about responses received from targets
+// ResponseInfo details information about responses received from targets
 type ResponseInfo struct {
 	Response *http.Response
 	Target   Target
 }
 
-// Type UniqueResponseInfo details information about unique responses received from targets
+// UniqueResponseInfo details information about unique responses received from targets
 type UniqueResponseInfo struct {
 	Response *http.Response
 	Targets  []Target
@@ -193,11 +194,11 @@ func getConfig(location string) (Configuration, error) {
 		}
 
 		// Associate the cookies with the current target
-		targetUrl, err := url.Parse(target.Url)
+		targetURL, err := url.Parse(target.URL)
 		if err != nil {
 			return Configuration{}, fmt.Errorf("Error parsing target URL: %s", err.Error())
 		}
-		target.CookieJar.SetCookies(targetUrl, cookies)
+		target.CookieJar.SetCookies(targetURL, cookies)
 	}
 
 	// Set default values
@@ -235,15 +236,15 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 	for _, target := range configuration.Target {
 		go func(t Target) {
 			// Cast the target URL to a URL type
-			tUrl, err := url.Parse(t.Url)
+			tURL, err := url.Parse(t.URL)
 			if err != nil {
-				errors <- fmt.Errorf("Error parsing URL %s: %v", t.Url, err.Error())
+				errors <- fmt.Errorf("Error parsing URL %s: %v", t.URL, err.Error())
 				return
 			}
 
 			// VERBOSE
 			if configuration.Verbose {
-				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tUrl.String())
+				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tURL.String())
 				if t.Body != "" {
 					log.Printf("[VERBOSE] Request body: %s", t.Body)
 				}
@@ -259,7 +260,7 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 					requestBody := strings.NewReader(t.Body)
 
 					// Declare HTTP request method and URL
-					req, err := http.NewRequest(t.Method, tUrl.String(), requestBody)
+					req, err := http.NewRequest(t.Method, tURL.String(), requestBody)
 					if err != nil {
 						errors <- fmt.Errorf("Error in forming request: %v", err.Error())
 						return
@@ -479,7 +480,7 @@ func outputResponses(uniqueResponses []UniqueResponseInfo) {
 		fmt.Printf("Similar: %v\n", uRespInfo.Count-1)
 		fmt.Printf("REQUESTS:\n")
 		for _, target := range uRespInfo.Targets {
-			fmt.Printf("\tURL: %s\n", target.Url)
+			fmt.Printf("\tURL: %s\n", target.URL)
 			fmt.Printf("\tMethod: %s\n", target.Method)
 			fmt.Printf("\tBody: %s\n", target.Body)
 			fmt.Printf("\tCookies: %v\n", target.Cookies)
