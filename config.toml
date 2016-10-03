@@ -15,6 +15,8 @@ verbose = true
     # body = "body=text"
     # Set the cookie values to send with the request to this target. Must be an array.
     cookies = ["PHPSESSIONID=12345","JSESSIONID=67890"]
+    # Set custom headers to send with the request to this target. Must be an array.
+    headers = ["X-Originating-IP: 127.0.0.1", "X-Remote-IP: 127.0.0.1"]
     # Follow redirects
     redirects = true
 
@@ -28,5 +30,7 @@ verbose = true
     body = "val=1000"
     # Set the cookie values to send with the request to this target. Must be an array.
     cookies = ["PHPSESSIONID=ABCDE","JSESSIONID=FGHIJ"]
+    # Set custom headers to send with the request to this target. Must be an array.
+    headers = ["X-Originating-IP: 127.0.0.1", "X-Remote-IP: 127.0.0.1"]
     # Do not follow redirects
     redirects = false
