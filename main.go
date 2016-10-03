@@ -274,8 +274,10 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 					var client http.Client
 
 					// TEMP- append cookies directly to the request
-					cookieStr := strings.Join(t.Cookies, ";")
-					req.Header.Add("Cookie", cookieStr)
+					if len(t.Cookies) > 0 {
+						cookieStr := strings.Join(t.Cookies, ";")
+						req.Header.Add("Cookie", cookieStr)
+					}
 
 					// Add content-type to POST requests (some applications require this to properly process POST requests)
 					// TODO: Find any bugs around other request types
