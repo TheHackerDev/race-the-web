@@ -47,6 +47,7 @@ type Target struct {
 	URL       string
 	Body      string
 	Cookies   []string
+	Headers   []string
 	Redirects bool
 	CookieJar http.CookieJar
 }
@@ -277,6 +278,14 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 					if len(t.Cookies) > 0 {
 						cookieStr := strings.Join(t.Cookies, ";")
 						req.Header.Add("Cookie", cookieStr)
+					}
+
+					// Add custom headers to the request
+					for _, header := range t.Headers {
+						split := strings.Split(header, ":")
+						hKey := split[0]
+						hVal := split[1]
+						req.Header.Add(hKey, hVal)
 					}
 
 					// Add content-type to POST requests (some applications require this to properly process POST requests)
