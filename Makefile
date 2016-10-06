@@ -14,8 +14,11 @@ ENV_LIN32 := GOOS=linux GOARCH=386
 ENV_WIN64 := GOOS=windows GOARCH=amd64
 ENV_WIN32 := GOOS=windows GOARCH=386
 
+# Runs all builds when "make" is run
 all: windows linux osx
 
+# Runs only a build for the local architecture in
+# the local directory when "make build" is run
 build:
 	@go build -o $(PREFIX)$(TAG) .
 
