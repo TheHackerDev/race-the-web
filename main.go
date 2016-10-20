@@ -247,7 +247,10 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 			if configuration.Verbose {
 				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tURL.String())
 				if t.Body != "" {
-					log.Printf("[VERBOSE] Request body: %s", t.Body)
+					log.Printf("[VERBOSE] Request body: %s\n", t.Body)
+				}
+				if len(t.Cookies) > 0 {
+					log.Printf("[VERBOSE] Request cookies: %v\n", t.Cookies)
 				}
 			}
 			for i := 0; i < configuration.Count; i++ {
