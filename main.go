@@ -308,7 +308,7 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 									InsecureSkipVerify: true,
 								},
 							},
-							Timeout: 20 * time.Second,
+							Timeout: 120 * time.Second,
 						}
 					} else {
 						client = http.Client{
