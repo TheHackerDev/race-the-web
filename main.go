@@ -323,7 +323,7 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 								redirectError := RedirectError{req}
 								return &redirectError
 							},
-							Timeout: 20 * time.Second,
+							Timeout: 120 * time.Second,
 						}
 					}
 
