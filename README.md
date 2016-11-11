@@ -17,6 +17,8 @@ Tests for race conditions in web applications by sending out a user-specified nu
 count = 100
 # Enable verbose logging
 verbose = true
+# Use an http proxy for all connections
+proxy = "http://127.0.0.1:8080"
 
 # Specify the first target
 [[target]]
