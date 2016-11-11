@@ -38,6 +38,7 @@ func (err *RedirectError) Error() string {
 type Configuration struct {
 	Count   int
 	Verbose bool
+	Proxy   string
 	Target  []Target
 }
 
@@ -202,6 +203,20 @@ func getConfig(location string) (Configuration, error) {
 		target.CookieJar.SetCookies(targetURL, cookies)
 	}
 
+	// Set a proxy for all http requests, if specified
+	if config.Proxy != "" {
+		proxyURL, err := url.Parse(config.Proxy)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("Invalid proxy URL.")
+		}
+		if proxyURL.Scheme == "" {
+			proxyURL.Scheme = "http" // default of http
+			config.Proxy = proxyURL.String()
+		} else if proxyURL.Scheme != "http" && proxyURL.Scheme != "https" {
+			return Configuration{}, fmt.Errorf("Proxy must be an http or https proxy, and specify the proper scheme (e.g. \"http://127.0.0.1:8080\")")
+		}
+	}
+
 	// Set default values
 	config = setDefaults(config)
 
@@ -246,6 +261,9 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 			// VERBOSE
 			if configuration.Verbose {
 				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tURL.String())
+				if configuration.Proxy != "" {
+					log.Printf("[VERBOSE] Proxy: %s\n", configuration.Proxy)
+				}
 				if t.Body != "" {
 					log.Printf("[VERBOSE] Request body: %s\n", t.Body)
 				}
@@ -300,24 +318,34 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 
 					// TODO: Add context to http client requests to manually specify timeout options (new in Go 1.7)
 
+					var transport http.Transport
+					// Use proxy, if set
+					if configuration.Proxy != "" {
+						proxyURL, _ := url.Parse(configuration.Proxy) // error checked when getting configuration
+						transport = http.Transport{
+							TLSClientConfig: &tls.Config{
+								InsecureSkipVerify: true,
+							},
+							Proxy: http.ProxyURL(proxyURL),
+						}
+					} else {
+						transport = http.Transport{
+							TLSClientConfig: &tls.Config{
+								InsecureSkipVerify: true,
+							},
+						}
+					}
+
 					if t.Redirects {
 						client = http.Client{
-							Jar: t.CookieJar,
-							Transport: &http.Transport{
-								TLSClientConfig: &tls.Config{
-									InsecureSkipVerify: true,
-								},
-							},
-							Timeout: 120 * time.Second,
+							Jar:       t.CookieJar,
+							Transport: &transport,
+							Timeout:   120 * time.Second,
 						}
 					} else {
 						client = http.Client{
-							Jar: t.CookieJar,
-							Transport: &http.Transport{
-								TLSClientConfig: &tls.Config{
-									InsecureSkipVerify: true,
-								},
-							},
+							Jar:       t.CookieJar,
+							Transport: &transport,
 							CheckRedirect: func(req *http.Request, via []*http.Request) error {
 								// Craft the custom error
 								redirectError := RedirectError{req}
@@ -498,6 +526,9 @@ func outputResponses(uniqueResponses []UniqueResponseInfo) {
 			fmt.Printf("\tMethod: %s\n", target.Method)
 			fmt.Printf("\tBody: %s\n", target.Body)
 			fmt.Printf("\tCookies: %v\n", target.Cookies)
+			if configuration.Proxy != "" {
+				fmt.Printf("\tProxy: %v\n", configuration.Proxy)
+			}
 			fmt.Printf("\tRedirects: %t\n", target.Redirects)
 			fmt.Println()
 		}
@@ -516,6 +547,3 @@ func readResponseBody(resp *http.Response) (content []byte, err error) {
 
 	return
 }
-
-// TODO: Add option for output (boolean), which toggles whether to compare responses and display responses in the output.
-// Useful in cases where there is another way to validate the race condition (in the bank test application, for example)
