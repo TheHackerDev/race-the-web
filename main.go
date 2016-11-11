@@ -261,6 +261,9 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 			// VERBOSE
 			if configuration.Verbose {
 				log.Printf("[VERBOSE] Sending %d %s requests to %s\n", configuration.Count, t.Method, tURL.String())
+				if configuration.Proxy != "" {
+					log.Printf("[VERBOSE] Proxy: %s\n", configuration.Proxy)
+				}
 				if t.Body != "" {
 					log.Printf("[VERBOSE] Request body: %s\n", t.Body)
 				}
@@ -523,6 +526,9 @@ func outputResponses(uniqueResponses []UniqueResponseInfo) {
 			fmt.Printf("\tMethod: %s\n", target.Method)
 			fmt.Printf("\tBody: %s\n", target.Body)
 			fmt.Printf("\tCookies: %v\n", target.Cookies)
+			if configuration.Proxy != "" {
+				fmt.Printf("\tProxy: %v\n", configuration.Proxy)
+			}
 			fmt.Printf("\tRedirects: %t\n", target.Redirects)
 			fmt.Println()
 		}
