@@ -483,7 +483,7 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 
 	// VERBOSE
 	if configuration.Verbose {
-		log.Printf("[VERBOSE] Unique response comparision complete.\n")
+		log.Printf("[VERBOSE] Unique response comparison complete.\n")
 	}
 
 	// Close the channels
