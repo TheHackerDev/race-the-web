@@ -72,7 +72,9 @@ The program has been written in Go, and as such can be compiled to all the commo
 - OSX amd64
 - OSX 386
 
-Alternatively, you can compile the code yourself. See [Dave Cheney](https://twitter.com/davecheney)'s excellent [post](http://dave.cheney.net/2015/08/22/cross-compilation-with-go-1-5 "Cross-compilation with Go 1.5") on the topic.
+## Compiling
+
+If you already have Go installed on your system, you can simply run `make build` at the command-line from within the top-level directory of this project to build a binary for your CPU architecture. Or you can run `make` to build for all major CPU architectures at once.
 
 ## The Vulnerability
 
