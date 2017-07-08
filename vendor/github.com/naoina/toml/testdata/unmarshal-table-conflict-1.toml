@@ -1,0 +1,8 @@
+# unmarshal-table-conflict-1.toml
+# Table a is defined twice.
+
+[a]
+b = 1
+
+[a]
+c = 2

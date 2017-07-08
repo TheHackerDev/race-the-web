@@ -1,0 +1,8 @@
+# unmarshal-arraytable-conflict-3.toml
+
+[[fruit]]
+name = "apple"
+variety = { name = "granny smith" }
+
+# conflicts with inline table above
+[[fruit.variety]]

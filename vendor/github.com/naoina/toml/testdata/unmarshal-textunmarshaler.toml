@@ -1,0 +1,11 @@
+# unmarshal-textunmarshaler.toml
+
+str = "str"
+int = 11
+float = 12.0
+
+[[arraytable]]
+str = "str2"
+int = 22
+float = 23.0
+

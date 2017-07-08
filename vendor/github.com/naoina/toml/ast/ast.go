@@ -2,6 +2,7 @@ package ast
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -119,7 +120,14 @@ func (d *Datetime) Source() string {
 }
 
 func (d *Datetime) Time() (time.Time, error) {
-	return time.Parse(time.RFC3339Nano, d.Value)
+	switch {
+	case !strings.Contains(d.Value, ":"):
+		return time.Parse("2006-01-02", d.Value)
+	case !strings.Contains(d.Value, "-"):
+		return time.Parse("15:04:05.999999999", d.Value)
+	default:
+		return time.Parse(time.RFC3339Nano, d.Value)
+	}
 }
 
 type Array struct {

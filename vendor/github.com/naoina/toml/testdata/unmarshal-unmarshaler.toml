@@ -1,0 +1,19 @@
+# unmarshal-unmarshaler.toml
+
+title = "testtitle"
+max_conn = 777
+ports = [8080, 8081, 8082]
+servers = [1, 2, 3]
+
+[table]
+name = "alice"
+
+[[arraytable]]
+name = "alice"
+
+[[arraytable]]
+name = "bob"
+
+[[array_of_struct]]
+title = "Alice's Adventures in Wonderland"
+author = "Lewis Carroll"

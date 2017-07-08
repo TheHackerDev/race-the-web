@@ -1,0 +1,8 @@
+# unmarshal-arraytable-nested-3.toml
+
+[[fruit]]
+variety = [{name = "red delicious"}, {name = "granny smith"}]
+
+[[fruit]]
+variety = [{name = "plantain"}]
+area = [{name = "phillippines"}]

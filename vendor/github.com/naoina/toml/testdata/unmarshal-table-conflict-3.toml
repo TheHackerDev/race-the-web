@@ -1,0 +1,8 @@
+# unmarshal-table-conflict-3.toml
+# Key b conflicts with table a.b
+
+[a.b]
+c = 2
+
+[a]
+b = 1

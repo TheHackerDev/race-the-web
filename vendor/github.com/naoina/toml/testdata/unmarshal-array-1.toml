@@ -1,0 +1,5 @@
+# unmarshal-array-1.toml
+
+ints = [
+  1, 2, 3
+]

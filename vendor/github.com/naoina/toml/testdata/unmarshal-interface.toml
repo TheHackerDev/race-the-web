@@ -1,0 +1,18 @@
+# unmarshal-interface.toml
+
+string = "string"
+int = 3
+float = 4.0
+boolean = true
+datetime = 1979-05-27T00:32:00.999999-07:00
+array = [1, 2, 3]
+inline = { key = "value" }
+
+[table]
+key = "value"
+
+[[arraytable]]
+key = "value"
+
+[[arraytable]]
+key = "value"

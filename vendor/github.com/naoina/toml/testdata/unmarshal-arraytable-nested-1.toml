@@ -1,0 +1,24 @@
+# unmarshal-arraytable-nested-1.toml
+
+[[fruit]]
+name = "apple"
+
+  [fruit.physical]
+  color = "red"
+  shape = "round"
+
+  [[fruit.variety]]
+  name = "red delicious"
+
+  [[fruit.variety]]
+  name = "granny smith"
+
+[[fruit]]
+name = "banana"
+
+  [fruit.physical]
+  color = "yellow"
+  shape = "lune"
+
+  [[fruit.variety]]
+  name = "plantain"
