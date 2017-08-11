@@ -1,0 +1,19 @@
+{
+	"count": 100,
+	"verbose": true,
+	"proxy": "http://127.0.0.1:8080",
+	"targets": [{
+		"method": "GET",
+		"url": "https://example.com/pay?val=1000",
+		"cookies": ["PHPSESSIONID=12345", "JSESSIONID=67890"],
+		"headers": ["X-Originating-IP: 127.0.0.1", "X-Remote-IP: 127.0.0.1"],
+		"redirects": true
+	}, {
+		"method": "POST",
+		"url": "https://example.com/pay",
+		"body": "val=1000",
+		"cookies": ["PHPSESSIONID=12345", "JSESSIONID=67890"],
+		"headers": ["X-Originating-IP: 127.0.0.1", "X-Remote-IP: 127.0.0.1"],
+		"redirects": false
+	}]
+}
