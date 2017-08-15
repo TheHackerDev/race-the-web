@@ -30,14 +30,20 @@ func main() {
 // API endpoint to set the configuration options
 func SetConfig(ctx *gin.Context) {
 	// Validate input
-	var config Configuration
+	var config Configuration // temporary variable required for proper validation
 	if ctx.BindJSON(&config) != nil {
 		// Invalid JSON sent
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid JSON",
+			"message": "invalid JSON data",
 		})
 		return
 	}
+
+	// Set defaults
+	SetDefaults(&config)
+
+	// Assign to global configuration object
+	configuration = config
 
 	// Send response
 	ctx.JSON(http.StatusOK, gin.H{

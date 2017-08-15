@@ -39,7 +39,6 @@ func (err *RedirectError) Error() string {
 // Count: 100
 // Verbose: false
 // Proxy: *none*
-// Targets: *none*
 type Configuration struct {
 	Count   int      `json:"count"`
 	Verbose bool     `json:"verbose"`
@@ -223,7 +222,7 @@ func getConfig(location string) (Configuration, error) {
 	}
 
 	// Set default values
-	config = setDefaults(config)
+	SetDefaults(&config)
 
 	if len(config.Targets) == 0 {
 		// No targets specified
@@ -233,16 +232,14 @@ func getConfig(location string) (Configuration, error) {
 	return config, nil
 }
 
-// Function setDefaults sets the default options, if not present in the configuration file.
+// Function SetDefaults sets the default options, if not present in the configuration file.
 // Redirects and verbose are both false, as the default value of a boolean.
-func setDefaults(config Configuration) Configuration {
+func SetDefaults(config *Configuration) {
 	// Count
 	if config.Count == 0 {
 		// Set to default value of 100
 		config.Count = 100
 	}
-
-	return config
 }
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
