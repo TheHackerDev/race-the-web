@@ -41,20 +41,20 @@ func (err *RedirectError) Error() string {
 // Proxy: *none*
 // Targets: *none*
 type Configuration struct {
-	Count   int
-	Verbose bool
-	Proxy   string
-	Targets []Target
+	Count   int      `json:"count"`
+	Verbose bool     `json:"verbose"`
+	Proxy   string   `json:"proxy"`
+	Targets []Target `json:"targets" binding:"required"`
 }
 
 // Target is a struct to hold information about an individual target URL endpoint.
 type Target struct {
-	Method    string
-	URL       string
-	Body      string
-	Cookies   []string
-	Headers   []string
-	Redirects bool
+	Method    string   `json:"method" binding:"required"`
+	URL       string   `json:"url" binding:"required"`
+	Body      string   `json:"body"`
+	Cookies   []string `json:"cookies"`
+	Headers   []string `json:"headers"`
+	Redirects bool     `json:"redirects"`
 	CookieJar http.CookieJar
 }
 

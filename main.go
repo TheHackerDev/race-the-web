@@ -30,6 +30,14 @@ func main() {
 // API endpoint to set the configuration options
 func SetConfig(ctx *gin.Context) {
 	// Validate input
+	var config Configuration
+	if ctx.BindJSON(&config) != nil {
+		// Invalid JSON sent
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid JSON",
+		})
+		return
+	}
 
 	// Send response
 	ctx.JSON(http.StatusOK, gin.H{
