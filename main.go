@@ -26,6 +26,7 @@ func main() {
 	r := gin.Default()
 	r.GET("/get/config", GetConfig)
 	r.POST("/set/config", SetConfig)
+	r.POST("/start", APIStart)
 
 	r.Run("127.0.0.1:8000")
 }
@@ -62,6 +63,24 @@ func GetConfig(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": fmt.Sprintf("configuration: %v", "TODO"),
 	})
+}
+
+func APIStart(ctx *gin.Context) {
+	// Run race test, returning any initial errors
+	if err := Start(); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": fmt.Sprintf("error: %s", err.Error()),
+		})
+	}
+
+	// TODO: Implement error channel to return errors back to caller immediately.
+
+	// Send response
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "test complete, check console for output",
+	})
+
+	// TODO: return output as JSON response (be mindful of timeouts)
 }
 
 // TODO: Write unit tests for all endpoints
