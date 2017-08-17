@@ -399,7 +399,7 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 		log.Printf("[VERBOSE] Requests complete.")
 	}
 
-	// Close the response and error chanels, so they don't block on the range read
+	// Close the response and error channels, so they don't block on the range read
 	close(responses)
 	close(errors)
 
