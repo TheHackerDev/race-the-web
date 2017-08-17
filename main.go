@@ -23,12 +23,12 @@ func main() {
 	gin.SetMode(gin.DebugMode)
 
 	// Configure & Start the HTTP API server
-	r := gin.Default()
-	r.GET("/get/config", GetConfig)
-	r.POST("/set/config", SetConfig)
-	r.POST("/start", APIStart)
+	router := gin.Default()
+	router.GET("/get/config", GetConfig)
+	router.POST("/set/config", SetConfig)
+	router.POST("/start", APIStart)
 
-	r.Run("127.0.0.1:8000")
+	router.Run("127.0.0.1:8000")
 }
 
 // API endpoint to set the configuration options
