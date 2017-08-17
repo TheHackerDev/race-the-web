@@ -11,8 +11,11 @@ import (
 // Main entry function for the program
 func main() {
 	// Run from command-line if arguments are provided- this means that a configuration file has been provided
-	if len(os.Args) == 2 {
-		Start()
+	if len(os.Args) >= 2 {
+		if err := Start(); err != nil {
+			fmt.Println(usage)
+			outError("[ERROR] %s\n", err)
+		}
 		os.Exit(0)
 	}
 

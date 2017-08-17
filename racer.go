@@ -101,25 +101,26 @@ func init() {
 	usage = fmt.Sprintf("Usage: %s config.toml", os.Args[0])
 }
 
-// Function main is the entrypoint to the application. It sends the work to the appropriate functions, sequentially.
-func Start() {
+// Function Start is the entrypoint to the race testing component of the application. It sends the work to the appropriate functions, sequentially.
+// Start also handles logging for the race tests.
+func Start() error {
 	// Change output location of logs
 	log.SetOutput(os.Stdout)
 
-	// Check the config file
-	if len(os.Args) != 2 {
-		// No configuration file provided
-		outError("[ERROR] No configuration file location provided.")
-		fmt.Println(usage)
-		os.Exit(1)
+	if len(os.Args) >= 2 {
+		// Check the config file
+		configFile := os.Args[1]
+		var err error
+		configuration, err = getConfigFile(configFile)
+		if err != nil {
+			return err
+		}
 	}
-	configFile := os.Args[1]
-	var err error
-	configuration, err = getConfig(configFile)
-	if err != nil {
-		outError("[ERROR] %s\n", err.Error())
-		fmt.Println(usage)
-		os.Exit(1)
+
+	// Verify that config is present
+	if len(configuration.Targets) == 0 {
+		// No targets specified
+		return fmt.Errorf("No targets set. Minimum of 1 target required.")
 	}
 
 	// Send the requests concurrently
@@ -156,13 +157,15 @@ func Start() {
 
 	// Output the responses
 	outputResponses(uniqueResponses)
+
+	return nil
 }
 
-// Function getConfig checks that all necessary configuration fields are given
+// Function getConfigFile checks that all necessary configuration fields are given
 // in a valid config file, and parses it for data.
 // Returns a Configuration object if successful.
 // Returns an empty Configuration object and a custom error if something went wrong.
-func getConfig(location string) (Configuration, error) {
+func getConfigFile(location string) (Configuration, error) {
 	f, err := os.Open(location)
 	if err != nil {
 		return Configuration{}, fmt.Errorf("Error opening configuration file: %s", err.Error())
@@ -179,8 +182,17 @@ func getConfig(location string) (Configuration, error) {
 		return Configuration{}, fmt.Errorf("Error with TOML file: %s", err.Error())
 	}
 
+	// Set default values
+	SetDefaults(&config)
+
+	return config, nil
+}
+
+// Prepares an attack by parsing a global configuration.
+// Returns an error if something went wrong.
+func prepareAttack() error {
 	// Add the cookies to the cookiejar for each target
-	for _, target := range config.Targets {
+	for _, target := range configuration.Targets {
 		target.CookieJar, _ = cookiejar.New(nil)
 		var cookies []*http.Cookie
 		for _, c := range target.Cookies {
@@ -202,34 +214,26 @@ func getConfig(location string) (Configuration, error) {
 		// Associate the cookies with the current target
 		targetURL, err := url.Parse(target.URL)
 		if err != nil {
-			return Configuration{}, fmt.Errorf("Error parsing target URL: %s", err.Error())
+			return fmt.Errorf("Error parsing target URL: %s", err.Error())
 		}
 		target.CookieJar.SetCookies(targetURL, cookies)
 	}
 
 	// Set a proxy for all http requests, if specified
-	if config.Proxy != "" {
-		proxyURL, err := url.Parse(config.Proxy)
+	if configuration.Proxy != "" {
+		proxyURL, err := url.Parse(configuration.Proxy)
 		if err != nil {
-			return Configuration{}, fmt.Errorf("Invalid proxy URL.")
+			return fmt.Errorf("Invalid proxy URL.")
 		}
 		if proxyURL.Scheme == "" {
 			proxyURL.Scheme = "http" // default of http
-			config.Proxy = proxyURL.String()
+			configuration.Proxy = proxyURL.String()
 		} else if proxyURL.Scheme != "http" && proxyURL.Scheme != "https" {
-			return Configuration{}, fmt.Errorf("Proxy must be an http or https proxy, and specify the proper scheme (e.g. \"http://127.0.0.1:8080\")")
+			return fmt.Errorf("Proxy must be an http or https proxy, and specify the proper scheme (e.g. \"http://127.0.0.1:8080\")")
 		}
 	}
 
-	// Set default values
-	SetDefaults(&config)
-
-	if len(config.Targets) == 0 {
-		// No targets specified
-		return Configuration{}, fmt.Errorf("No targets set. Minimum of 1 target required.")
-	}
-
-	return config, nil
+	return nil
 }
 
 // Function SetDefaults sets the default options, if not present in the configuration file.
