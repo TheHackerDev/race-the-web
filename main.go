@@ -71,6 +71,7 @@ func GetConfig(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, configuration)
 }
 
+// API endpoint to begin the race test using the configuration file already provided.
 func APIStart(ctx *gin.Context) {
 	// Run race test, returning any initial errors
 	err, responses := Start()
