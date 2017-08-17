@@ -58,12 +58,17 @@ func SetConfig(ctx *gin.Context) {
 
 // API endpoint to retrieve the high-level configuration
 func GetConfig(ctx *gin.Context) {
-	// Validate input
+	// Check if the configuration exists
+	if len(configuration.Targets) == 0 {
+		// No configuration currently exists
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "no configuration set",
+		})
+		return
+	}
 
 	// Send response
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": fmt.Sprintf("configuration: %v", "TODO"),
-	})
+	ctx.JSON(http.StatusOK, configuration)
 }
 
 func APIStart(ctx *gin.Context) {
