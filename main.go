@@ -21,7 +21,7 @@ func main() {
 	}
 
 	// Set Gin configuration mode
-	gin.SetMode(gin.DebugMode)
+	// gin.SetMode(gin.DebugMode)
 
 	// Configure & Start the HTTP API server
 	router := gin.Default()
