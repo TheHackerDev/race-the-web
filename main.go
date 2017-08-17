@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,7 +13,7 @@ import (
 func main() {
 	// Run from command-line if arguments are provided- this means that a configuration file has been provided
 	if len(os.Args) >= 2 {
-		if err := Start(); err != nil {
+		if err, _ := Start(); err != nil {
 			fmt.Println(usage)
 			outError("[ERROR] %s\n", err)
 		}
@@ -67,20 +68,21 @@ func GetConfig(ctx *gin.Context) {
 
 func APIStart(ctx *gin.Context) {
 	// Run race test, returning any initial errors
-	if err := Start(); err != nil {
+	err, responses := Start()
+	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": fmt.Sprintf("error: %s", err.Error()),
 		})
 	}
 
-	// TODO: Implement error channel to return errors back to caller immediately.
+	// Set response values
+	ctx.Header("Content-Type", "application/json")
+	ctx.Status(http.StatusOK)
 
-	// Send response
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "test complete, check console for output",
-	})
-
-	// TODO: return output as JSON response (be mindful of timeouts)
+	// Manually serialize responses, in order to remove html escaping.
+	enc := json.NewEncoder(ctx.Writer)
+	enc.SetEscapeHTML(false) // Disable html escaping
+	enc.Encode(responses)
 }
 
 // TODO: Write unit tests for all endpoints

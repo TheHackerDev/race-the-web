@@ -48,13 +48,13 @@ type Configuration struct {
 
 // Target is a struct to hold information about an individual target URL endpoint.
 type Target struct {
-	Method    string   `json:"method" binding:"required"`
-	URL       string   `json:"url" binding:"required"`
-	Body      string   `json:"body"`
-	Cookies   []string `json:"cookies"`
-	Headers   []string `json:"headers"`
-	Redirects bool     `json:"redirects"`
-	CookieJar http.CookieJar
+	Method    string         `json:"method" binding:"required"`
+	URL       string         `json:"url" binding:"required"`
+	Body      string         `json:"body"` // NOTE: This is a base64 encoded string of the entire body contents (especially useful in the case of full HTML pages)
+	Cookies   []string       `json:"cookies"`
+	Headers   []string       `json:"headers"`
+	Redirects bool           `json:"redirects"`
+	CookieJar http.CookieJar `json:"-"` // Ignore this field, as it is usually nil when outputting via the API
 }
 
 // REF: Access parts of the Configuration object.
@@ -77,7 +77,7 @@ type Target struct {
 
 var configuration Configuration
 
-// ResponseInfo details information about responses received from targets
+// ResponseInfo details information about responses received from targets. Uses *http.Response here for speed, as this struct is used in gathering data quickly back from targets (before comparison begins). This will later be parsed and converted into a UniqueResponseData object.
 type ResponseInfo struct {
 	Response *http.Response
 	Target   Target
@@ -85,9 +85,19 @@ type ResponseInfo struct {
 
 // UniqueResponseInfo details information about unique responses received from targets
 type UniqueResponseInfo struct {
-	Response *http.Response
+	Response UniqueResponseData
 	Targets  []Target
 	Count    int
+}
+
+// ResponseData is an easily consumable structure holding relevant unique response data
+type UniqueResponseData struct {
+	Body       string
+	StatusCode int
+	Length     int64
+	Protocol   string
+	Headers    http.Header
+	Location   string
 }
 
 // Usage message
@@ -103,7 +113,7 @@ func init() {
 
 // Function Start is the entrypoint to the race testing component of the application. It sends the work to the appropriate functions, sequentially.
 // Start also handles logging for the race tests.
-func Start() error {
+func Start() (error, []UniqueResponseInfo) {
 	// Change output location of logs
 	log.SetOutput(os.Stdout)
 
@@ -113,14 +123,14 @@ func Start() error {
 		var err error
 		configuration, err = getConfigFile(configFile)
 		if err != nil {
-			return err
+			return err, nil
 		}
 	}
 
 	// Verify that config is present
 	if len(configuration.Targets) == 0 {
 		// No targets specified
-		return fmt.Errorf("No targets set. Minimum of 1 target required.")
+		return fmt.Errorf("No targets set. Minimum of 1 target required."), nil
 	}
 
 	// Send the requests concurrently
@@ -148,17 +158,11 @@ func Start() error {
 		}
 	}
 
-	// Make sure all response bodies are closed- memory leaks otherwise
-	defer func() {
-		for _, uRespInfo := range uniqueResponses {
-			uRespInfo.Response.Body.Close()
-		}
-	}()
-
 	// Output the responses
 	outputResponses(uniqueResponses)
 
-	return nil
+	// Return the responses back to the API
+	return nil, uniqueResponses
 }
 
 // Function getConfigFile checks that all necessary configuration fields are given
@@ -429,61 +433,67 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 			continue
 		}
 
+		// Create response data object to pass around
+		respData := UniqueResponseData{
+			Body:       string(respBody),
+			StatusCode: respInfo.Response.StatusCode,
+			Length:     respInfo.Response.ContentLength,
+			Protocol:   respInfo.Response.Proto,
+			Headers:    respInfo.Response.Header}
+		location, err := respInfo.Response.Location()
+		if err != http.ErrNoLocation {
+			respData.Location = location.String()
+		}
+
 		if len(uniqueResponses) == 0 {
 			// The unique responses slice is empty, add the current response as the first
-			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{Count: 1, Response: respInfo.Response, Targets: []Target{respInfo.Target}})
-		} else {
-			// Add to the unique responses channel, if no similar ones exist
-			match := false // Assume unique, until similar found
-			j := len(uniqueResponses)
-			for i := 0; i < j; i++ {
-				uRespInfo := &uniqueResponses[i]
-				// Read the unique response body
-				uRespBody, err := readResponseBody(uRespInfo.Response)
-				if err != nil {
-					errors <- fmt.Errorf("Error reading unique response body: %s", err.Error())
+			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{
+				Count:    1,
+				Response: respData,
+				Targets:  []Target{respInfo.Target}})
+			continue
+		}
 
-					// Error, move on to the next inner loop value
-					continue
-				}
+		// Add to the unique responses channel, if no similar ones exist
+		respMatch := false        // Assume unique, until similar found
+		j := len(uniqueResponses) // Used to count through the existing unique responses channel
+		for i := 0; i < j; i++ {
+			compareResp := &uniqueResponses[i]
 
-				// Compare the response bodies
-				respBodyMatch := false
-				if string(respBody) == string(uRespBody) {
-					respBodyMatch = true
-				}
+			// Compare response status code, body content, and content length
+			if respData.StatusCode == compareResp.Response.StatusCode && respData.Body == compareResp.Response.Body && respData.Length == compareResp.Response.Length {
+				// Match found
+				respMatch = true
+				compareResp.Count++
 
-				// Compare response status code, body content, and content length
-				if respInfo.Response.StatusCode == uRespInfo.Response.StatusCode && respInfo.Response.ContentLength == uRespInfo.Response.ContentLength && respBodyMatch {
-					// Match found
-					match = true
-					uRespInfo.Count++
-
-					// Check for the same request, using the target information
-					targetMatch := false
-					for _, target := range uRespInfo.Targets {
-						if reflect.DeepEqual(target, respInfo.Target) {
-							// Target match found
-							targetMatch = true
-							break
-						}
+				// Check for the same request that generated this matched response (== unique request AND response)
+				reqMatch := false
+				// Iterate through all requests in comparison group and compare against current request being processed
+				for _, compareTarget := range compareResp.Targets {
+					if reflect.DeepEqual(compareTarget, respInfo.Target) {
+						// Request match found
+						reqMatch = true
+						break
 					}
-					if !targetMatch {
-						// Append the new target to the unique response
-						uRespInfo.Targets = append(uRespInfo.Targets, respInfo.Target)
-					}
-					// Exit inner loop
-					break
 				}
+				if !reqMatch {
+					// Append the new target to the unique response
+					compareResp.Targets = append(compareResp.Targets, respInfo.Target)
+				}
+				// Exit inner loop
+				break
 			}
+		}
 
-			// Check if response matches another response already found
-			if !match {
-				// Unique, add to unique responses
-				uniqueResponses = append(uniqueResponses, UniqueResponseInfo{Count: 1, Response: respInfo.Response, Targets: []Target{respInfo.Target}})
-				// Increase loop count to account for newly added unique response
-				j++
-			}
+		// Check if response matches another response already found
+		if !respMatch {
+			// Unique, add to unique responses
+			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{
+				Count:    1,
+				Response: respData,
+				Targets:  []Target{respInfo.Target}})
+			// Increase loop count to account for newly added unique response
+			j++
 		}
 	}
 
@@ -501,33 +511,22 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 func outputResponses(uniqueResponses []UniqueResponseInfo) {
 	// Display the responses
 	fmt.Printf("Unique Responses:\n\n")
-	for _, uRespInfo := range uniqueResponses {
+	for _, data := range uniqueResponses {
 		fmt.Println("**************************************************")
 		fmt.Printf("RESPONSE:\n")
-		fmt.Printf("[Status Code] %v\n", uRespInfo.Response.StatusCode)
-		fmt.Printf("[Protocol] %v\n", uRespInfo.Response.Proto)
-		if len(uRespInfo.Response.Header) != 0 {
+		fmt.Printf("[Status Code] %v\n", data.Response.StatusCode)
+		fmt.Printf("[Protocol] %v\n", data.Response.Protocol)
+		if len(data.Response.Headers) != 0 {
 			fmt.Println("[Headers]")
-			for header, value := range uRespInfo.Response.Header {
+			for header, value := range data.Response.Headers {
 				fmt.Printf("\t%v: %v\n", header, value)
 			}
 		}
-		location, err := uRespInfo.Response.Location()
-		if err != http.ErrNoLocation {
-			fmt.Printf("[Location] %v\n", location.String())
-		}
-		respBody, err := readResponseBody(uRespInfo.Response)
-		if err != nil {
-			fmt.Println("[Body] ")
-			outError("[ERROR] Error reading body: %v.", err)
-		} else {
-			fmt.Printf("[Body]\n%s\n", respBody)
-			// Close the response body
-			uRespInfo.Response.Body.Close()
-		}
-		fmt.Printf("Similar: %v\n", uRespInfo.Count-1)
+		fmt.Printf("[Location] %v\n", data.Response.Location)
+		fmt.Printf("[Body]\n%s\n", data.Response.Body)
+		fmt.Printf("Similar: %v\n", data.Count-1)
 		fmt.Printf("REQUESTS:\n")
-		for _, target := range uRespInfo.Targets {
+		for _, target := range data.Targets {
 			fmt.Printf("\tURL: %s\n", target.URL)
 			fmt.Printf("\tMethod: %s\n", target.Method)
 			fmt.Printf("\tBody: %s\n", target.Body)
