@@ -1,8 +1,12 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/insp3ctre/race-the-web)](https://goreportcard.com/report/github.com/insp3ctre/race-the-web)
 
-# Race The Web
+# Race The Web (RTW)
 
 Tests for race conditions in web applications by sending out a user-specified number of requests to a target URL (or URLs) *simultaneously*, and then compares the responses from the server for uniqueness. Includes a number of configuration options.
+
+## UPDATE: Now CI Compatible!
+
+Version 2.0.0 now makes it easier than ever to integrate RTW into your continuous integration pipeline (à la [Jenkins](https://jenkins.io/), [Travis](https://travis-ci.org/), or [Drone](https://github.com/drone/drone)), through the use of an easy to use HTTP API. More information can be found in the **Usage** section below.
 
 ## Watch The Talk
 
@@ -12,7 +16,8 @@ _Racing the Web - Hackfest 2016_
 
 ## Usage
 
-`race-the-web config.toml`
+- With configuration file: `race-the-web config.toml`
+- API: `race-the-web`
 
 ### Configuration File
 
@@ -28,8 +33,8 @@ verbose = true
 # Use an http proxy for all connections
 proxy = "http://127.0.0.1:8080"
 
-# Specify the first target
-[[target]]
+# Specify the first request
+[[requests]]
     # Use the GET request method
     method = "GET"
     # Set the URL target. Any valid URL is accepted, including ports, https, and parameters.
@@ -43,8 +48,8 @@ proxy = "http://127.0.0.1:8080"
     # Follow redirects
     redirects = true
 
-# Specify the second target
-[[target]]
+# Specify the second request
+[[requests]]
     # Use the POST request method
     method = "POST"
     # Set the URL target. Any valid URL is accepted, including ports, https, and parameters.
@@ -61,6 +66,143 @@ proxy = "http://127.0.0.1:8080"
 
 TOML Spec: https://github.com/toml-lang/toml
 
+### API
+
+Since version 2.0.0, RTW now has a full-featured API, which allows you to easily integrate it into your continuous integration (CI) tool of choice. This means that you can quickly and easily test your web application for race conditions automatically whenever you commit your code.
+
+The API works through a simple set of HTTP calls. You provide input in the form of JSON and receive a response in JSON. The 3 API endpoints are as follows:
+
+- `POST` `http://127.0.0.1:8000/set/config`: Provide configuration data (in JSON format) for the race condition test you want to run (examples below).
+- `GET` `http://127.0.0.1:8000/get/config`: Fetch the current configuration data. Data is returned in a JSON response.
+- `POST` `http://127.0.0.1:8000/start`: Begin the race condition test using the configuration that you have already provided. All findings are returned back in JSON output.
+
+#### Example JSON configuration (sent to `/set/config` using a `POST` request)
+
+```json
+{
+    "count": 100,
+    "verbose": false,
+    "requests": [
+        {
+            "method": "POST",
+            "url": "http://racetheweb.io/bank/withdraw",
+            "cookies": [
+                "sessionId=dutwJx8kyyfXkt9tZbboT150TjZoFuEZGRy8Mtfpfe7g7UTPybCZX6lgdRkeOjQA"
+            ],
+            "body": "amount=1",
+            "redirects": true
+        }
+    ]
+}
+```
+
+#### Example workflow using curl
+
+_Note that this example uses the accompanying website for testing race condition vulnerabilities in web applications, found at [RaceTheWeb.io](http://racetheweb.io)_
+
+1. Send the configuration data: `curl -d '{"count":100,"verbose":false,"requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"body":"amount=1","redirects":true}]}' -H "Content-Type: application/json" -X POST http://127.0.0.1:8000/set/config`.
+    - Response:
+    ```JSON{"message":"configuration saved"}```
+2. Retrieve the configuration data for validation: `curl -X GET http://127.0.0.1:8000/get/config`.
+    - Response:
+    ```JSON{"count":100,"verbose":false,"proxy":"","requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","body":"amount=1","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"headers":null,"redirects":true}]}```
+3. Start the race condition test: `curl -X POST http://127.0.0.1:8000/start`.
+    - Response (expanded for visibility):
+```JSON
+[
+    {
+        "Response": {
+            "Body": "\n<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    \n    <title>Bank Test</title>\n\n    \n    <link href=\"/static/css/bootstrap.min.css\" rel=\"stylesheet\">\n\n    \n    \n    \n\n    \n    <meta name=\"twitter:card\" content=\"summary_large_image\" />\n    <meta name=\"twitter:site\" content=\"@insp3ctre\" />\n    <meta name=\"twitter:title\" content=\"Race Condition Exploit Practice\" />\n    <meta name=\"twitter:description\" content=\"Learn how to exploit race conditions in web applications.\" />\n    <meta name=\"twitter:image\" content=\"/static/img/bank_homepage_screenshot_wide.png\" />\n    <meta name=\"twitter:image:alt\" content=\"Image of the bank account exploit application.\" />\n  </head>\n  <body>\n    <nav class=\"navbar\">\n      <div class=\"container-fluid\">\n        <div class=\"navbar-header\">\n          <a class=\"navbar-brand\" href=\"/\">Race-The-Web</a>\n        </div>\n        <ul class=\"nav navbar-nav\">\n          <li><a href=\"/bank\">Bank</a></li>\n        </ul>\n        <ul class=\"nav navbar-nav navbar-right\">\n          <li><a href=\"https://www.youtube.com/watch?v=4T99v957I0o\"><img src=\"http://racetheweb.io/static/img/logo-youtube.png\" alt=\"Racing the Web - Hackfest 2016\" title=\"Racing the Web - Hackfest 2016\"></a></li>\n          <li><a href=\"https://github.com/insp3ctre/race-the-web\"><img src=\"/static/img/logo-github.png\" alt=\"Race-The-Web on Github\"></a></li>\n        </ul>\n      </div>\n    </nav>\n\n    <div class=\"container\">\n        <div class=\"row\">\n            <div class=\"page-header\">\n                <h1 class=\"text-center\">Welcome to SpeedBank, International</h1>\n            </div>\n        </div>\n        \n        <div class=\"row\">\n            <div class=\"col-xs-12 col-sm-8 col-sm-offset-2\">\n                <p class=\"text-center bg-success\">You have successfully withdrawn $1</p>\n            </div>\n        </div>\n        \n        \n        <div class=\"row\">\n            <h2 class=\"text-center\">Balance: 9999</h2>\n        </div>\n        <div class=\"row\">\n            <div class=\"col-xs-8 col-xs-offset-3\">\n                <form action=\"/bank/withdraw\" method=\"POST\" class=\"form-inline\">\n                    <div class=\"form-group\">\n                        <label class=\"sr-only\" for=\"withdrawAmount\">Amount (in dollars)</label>\n                        <div class=\"input-group\">\n                            <div class=\"input-group-addon\">$</div>\n                            <input type=\"text\" class=\"form-control\" id=\"withdrawAmount\" name=\"amount\" placeholder=\"Amount\">\n                            <div class=\"input-group-addon\">.00</div>\n                        </div>\n                        <div class=\"input-group\">\n                            <input type=\"submit\" class=\"btn btn-primary\" value=\"Withdraw cash\">\n                        </div>\n                    </div>\n                </form>\n            </div>\n        </div>\n        \n        <div class=\"row\">\n            <div class=\"col-xs-12 col-sm-8 col-sm-offset-2\">\n                <h2 class=\"text-center\">Instructions</h2>\n                <ol>\n                    <li>Click “Initialize” to initialize a bank account with $10,000.</li>\n                    <li>Withdraw money from your account, observe that your account balance is updated, and that you have received the amount requested.</li>\n                    <li>Repeat the request with <a href=\"https://github.com/insp3ctre/race-the-web\">race-the-web</a>. Your config file should look like the following:</li>\n<pre>\n# Make one request\ncount = 100\nverbose = true\n[[requests]]\n    method = \"POST\"\n    url = \"http://racetheweb.io/bank/withdraw\"\n    # Withdraw 1 dollar\n    body = \"amount=1\"\n    # Insert your sessionId cookie below.\n    cookies = [“sessionId=&lt;insert here&gt;\"]\n    redirects = false\n</pre>\n                    <li>Visit the bank page again in your browser to view your updated balance. Note that the total <em>should</em> be $100 less ($1 * 100 requests) than when you originally withdrew money. However, due to a race condition flaw in the application, your balance will be much more, yet you will have received the money from the bank in every withdrawal.</li>\n                </ol>\n            </div>\n        </div>\n    </div>\n    \n    <script type=\"text/javascript\">\n        \n        history.replaceState(\"Bank\", \"Bank\", \"/bank\")\n    </script>\n    \n\n    <p class=\"small text-center\">\n        <span class=\"glyphicon glyphicon-copyright-mark\" aria-hidden=\"true\"></span><a href=\"https://www.twitter.com/insp3ctre\">Aaron Hnatiw</a> 2017\n    </p>\n    \n    <script src=\"https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js\"></script>\n    \n    <script src=\"/static/js/bootstrap.min.js\"></script>\n    \n    <script>\n    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){\n    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),\n    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)\n    })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');\n\n    ga('create', 'UA-93555669-1', 'auto');\n    ga('send', 'pageview');\n\n    </script>\n    </body>\n</html>\n",
+            "StatusCode": 200,
+            "Length": -1,
+            "Protocol": "HTTP/1.1",
+            "Headers": {
+                "Content-Type": [
+                    "text/html; charset=utf-8"
+                ],
+                "Date": [
+                    "Fri, 18 Aug 2017 15:36:29 GMT"
+                ]
+            },
+            "Location": ""
+        },
+        "Targets": [
+            {
+                "method": "POST",
+                "url": "http://racetheweb.io/bank/withdraw",
+                "body": "amount=1",
+                "cookies": [
+                    "sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"
+                ],
+                "headers": null,
+                "redirects": true
+            }
+        ],
+        "Count": 1
+    },
+    {
+        "Response": {
+            "Body": "\n<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    \n    <title>Bank Test</title>\n\n    \n    <link href=\"/static/css/bootstrap.min.css\" rel=\"stylesheet\">\n\n    \n    \n    \n\n    \n    <meta name=\"twitter:card\" content=\"summary_large_image\" />\n    <meta name=\"twitter:site\" content=\"@insp3ctre\" />\n    <meta name=\"twitter:title\" content=\"Race Condition Exploit Practice\" />\n    <meta name=\"twitter:description\" content=\"Learn how to exploit race conditions in web applications.\" />\n    <meta name=\"twitter:image\" content=\"/static/img/bank_homepage_screenshot_wide.png\" />\n    <meta name=\"twitter:image:alt\" content=\"Image of the bank account exploit application.\" />\n  </head>\n  <body>\n    <nav class=\"navbar\">\n      <div class=\"container-fluid\">\n        <div class=\"navbar-header\">\n          <a class=\"navbar-brand\" href=\"/\">Race-The-Web</a>\n        </div>\n        <ul class=\"nav navbar-nav\">\n          <li><a href=\"/bank\">Bank</a></li>\n        </ul>\n        <ul class=\"nav navbar-nav navbar-right\">\n          <li><a href=\"https://www.youtube.com/watch?v=4T99v957I0o\"><img src=\"http://racetheweb.io/static/img/logo-youtube.png\" alt=\"Racing the Web - Hackfest 2016\" title=\"Racing the Web - Hackfest 2016\"></a></li>\n          <li><a href=\"https://github.com/insp3ctre/race-the-web\"><img src=\"/static/img/logo-github.png\" alt=\"Race-The-Web on Github\"></a></li>\n        </ul>\n      </div>\n    </nav>\n\n    <div class=\"container\">\n        <div class=\"row\">\n            <div class=\"page-header\">\n                <h1 class=\"text-center\">Welcome to SpeedBank, International</h1>\n            </div>\n        </div>\n        \n        <div class=\"row\">\n            <div class=\"col-xs-12 col-sm-8 col-sm-offset-2\">\n                <p class=\"text-center bg-success\">You have successfully withdrawn $1</p>\n            </div>\n        </div>\n        \n        \n        <div class=\"row\">\n            <h2 class=\"text-center\">Balance: 9998</h2>\n        </div>\n        <div class=\"row\">\n            <div class=\"col-xs-8 col-xs-offset-3\">\n                <form action=\"/bank/withdraw\" method=\"POST\" class=\"form-inline\">\n                    <div class=\"form-group\">\n                        <label class=\"sr-only\" for=\"withdrawAmount\">Amount (in dollars)</label>\n                        <div class=\"input-group\">\n                            <div class=\"input-group-addon\">$</div>\n                            <input type=\"text\" class=\"form-control\" id=\"withdrawAmount\" name=\"amount\" placeholder=\"Amount\">\n                            <div class=\"input-group-addon\">.00</div>\n                        </div>\n                        <div class=\"input-group\">\n                            <input type=\"submit\" class=\"btn btn-primary\" value=\"Withdraw cash\">\n                        </div>\n                    </div>\n                </form>\n            </div>\n        </div>\n        \n        <div class=\"row\">\n            <div class=\"col-xs-12 col-sm-8 col-sm-offset-2\">\n                <h2 class=\"text-center\">Instructions</h2>\n                <ol>\n                    <li>Click “Initialize” to initialize a bank account with $10,000.</li>\n                    <li>Withdraw money from your account, observe that your account balance is updated, and that you have received the amount requested.</li>\n                    <li>Repeat the request with <a href=\"https://github.com/insp3ctre/race-the-web\">race-the-web</a>. Your config file should look like the following:</li>\n<pre>\n# Make one request\ncount = 100\nverbose = true\n[[requests]]\n    method = \"POST\"\n    url = \"http://racetheweb.io/bank/withdraw\"\n    # Withdraw 1 dollar\n    body = \"amount=1\"\n    # Insert your sessionId cookie below.\n    cookies = [“sessionId=&lt;insert here&gt;\"]\n    redirects = false\n</pre>\n                    <li>Visit the bank page again in your browser to view your updated balance. Note that the total <em>should</em> be $100 less ($1 * 100 requests) than when you originally withdrew money. However, due to a race condition flaw in the application, your balance will be much more, yet you will have received the money from the bank in every withdrawal.</li>\n                </ol>\n            </div>\n        </div>\n    </div>\n    \n    <script type=\"text/javascript\">\n        \n        history.replaceState(\"Bank\", \"Bank\", \"/bank\")\n    </script>\n    \n\n    <p class=\"small text-center\">\n        <span class=\"glyphicon glyphicon-copyright-mark\" aria-hidden=\"true\"></span><a href=\"https://www.twitter.com/insp3ctre\">Aaron Hnatiw</a> 2017\n    </p>\n    \n    <script src=\"https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js\"></script>\n    \n    <script src=\"/static/js/bootstrap.min.js\"></script>\n    \n    <script>\n    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){\n    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),\n    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)\n    })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');\n\n    ga('create', 'UA-93555669-1', 'auto');\n    ga('send', 'pageview');\n\n    </script>\n    </body>\n</html>\n",
+            "StatusCode": 200,
+            "Length": -1,
+            "Protocol": "HTTP/1.1",
+            "Headers": {
+                "Content-Type": [
+                    "text/html; charset=utf-8"
+                ],
+                "Date": [
+                    "Fri, 18 Aug 2017 15:36:30 GMT"
+                ]
+            },
+            "Location": ""
+        },
+        "Targets": [
+            {
+                "method": "POST",
+                "url": "http://racetheweb.io/bank/withdraw",
+                "body": "amount=1",
+                "cookies": [
+                    "sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"
+                ],
+                "headers": null,
+                "redirects": true
+            }
+        ],
+        "Count": 1
+    },
+    {
+        "Response": {
+            "Body": "\n<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    \n    <title>Bank Test</title>\n\n    \n    <link href=\"/static/css/bootstrap.min.css\" rel=\"stylesheet\">\n\n    \n    \n    \n\n    \n    <meta name=\"twitter:card\" content=\"summary_large_image\" />\n    <meta name=\"twitter:site\" content=\"@insp3ctre\" />\n    <meta name=\"twitter:title\" content=\"Race Condition Exploit Practice\" />\n    <meta name=\"twitter:description\" content=\"Learn how to exploit race conditions in web applications.\" />\n    <meta name=\"twitter:image\" content=\"/static/img/bank_homepage_screenshot_wide.png\" />\n    <meta name=\"twitter:image:alt\" content=\"Image of the bank account exploit application.\" />\n  </head>\n  <body>\n    <nav class=\"navbar\">\n      <div class=\"container-fluid\">\n        <div class=\"navbar-header\">\n          <a class=\"navbar-brand\" href=\"/\">Race-The-Web</a>\n        </div>\n        <ul class=\"nav navbar-nav\">\n          <li><a href=\"/bank\">Bank</a></li>\n        </ul>\n        <ul class=\"nav navbar-nav navbar-right\">\n          <li><a href=\"https://www.youtube.com/watch?v=4T99v957I0o\"><img src=\"http://racetheweb.io/static/img/logo-youtube.png\" alt=\"Racing the Web - Hackfest 2016\" title=\"Racing the Web - Hackfest 2016\"></a></li>\n          <li><a href=\"https://github.com/insp3ctre/race-the-web\"><img src=\"/static/img/logo-github.png\" alt=\"Race-The-Web on Github\"></a></li>\n        </ul>\n      </div>\n    </nav>\n\n    <div class=\"container\">\n        <div class=\"row\">\n            <div class=\"page-header\">\n                <h1 class=\"text-center\">Welcome to SpeedBank, International</h1>\n            </div>\n        </div>\n        \n        <div class=\"row\">\n            <div class=\"col-xs-12 col-sm-8 col-sm-offset-2\">\n                <p class=\"text-center bg-success\">You have successfully withdrawn $1</p>\n            </div>\n        </div>\n        \n        \n        <div class=\"row\">\n            <h2 class=\"text-center\">Balance: 9997</h2>\n        </div>\n        <div class=\"row\">\n            <div class=\"col-xs-8 col-xs-offset-3\">\n                <form action=\"/bank/withdraw\" method=\"POST\" class=\"form-inline\">\n                    <div class=\"form-group\">\n                        <label class=\"sr-only\" for=\"withdrawAmount\">Amount (in dollars)</label>\n                        <div class=\"input-group\">\n                            <div class=\"input-group-addon\">$</div>\n                            <input type=\"text\" class=\"form-control\" id=\"withdrawAmount\" name=\"amount\" placeholder=\"Amount\">\n                            <div class=\"input-group-addon\">.00</div>\n                        </div>\n                        <div class=\"input-group\">\n                            <input type=\"submit\" class=\"btn btn-primary\" value=\"Withdraw cash\">\n                        </div>\n                    </div>\n                </form>\n            </div>\n        </div>\n        \n        <div class=\"row\">\n            <div class=\"col-xs-12 col-sm-8 col-sm-offset-2\">\n                <h2 class=\"text-center\">Instructions</h2>\n                <ol>\n                    <li>Click “Initialize” to initialize a bank account with $10,000.</li>\n                    <li>Withdraw money from your account, observe that your account balance is updated, and that you have received the amount requested.</li>\n                    <li>Repeat the request with <a href=\"https://github.com/insp3ctre/race-the-web\">race-the-web</a>. Your config file should look like the following:</li>\n<pre>\n# Make one request\ncount = 100\nverbose = true\n[[requests]]\n    method = \"POST\"\n    url = \"http://racetheweb.io/bank/withdraw\"\n    # Withdraw 1 dollar\n    body = \"amount=1\"\n    # Insert your sessionId cookie below.\n    cookies = [“sessionId=&lt;insert here&gt;\"]\n    redirects = false\n</pre>\n                    <li>Visit the bank page again in your browser to view your updated balance. Note that the total <em>should</em> be $100 less ($1 * 100 requests) than when you originally withdrew money. However, due to a race condition flaw in the application, your balance will be much more, yet you will have received the money from the bank in every withdrawal.</li>\n                </ol>\n            </div>\n        </div>\n    </div>\n    \n    <script type=\"text/javascript\">\n        \n        history.replaceState(\"Bank\", \"Bank\", \"/bank\")\n    </script>\n    \n\n    <p class=\"small text-center\">\n        <span class=\"glyphicon glyphicon-copyright-mark\" aria-hidden=\"true\"></span><a href=\"https://www.twitter.com/insp3ctre\">Aaron Hnatiw</a> 2017\n    </p>\n    \n    <script src=\"https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js\"></script>\n    \n    <script src=\"/static/js/bootstrap.min.js\"></script>\n    \n    <script>\n    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){\n    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),\n    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)\n    })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');\n\n    ga('create', 'UA-93555669-1', 'auto');\n    ga('send', 'pageview');\n\n    </script>\n    </body>\n</html>\n",
+            "StatusCode": 200,
+            "Length": -1,
+            "Protocol": "HTTP/1.1",
+            "Headers": {
+                "Content-Type": [
+                    "text/html; charset=utf-8"
+                ],
+                "Date": [
+                    "Fri, 18 Aug 2017 15:36:36 GMT"
+                ]
+            },
+            "Location": ""
+        },
+        "Targets": [
+            {
+                "method": "POST",
+                "url": "http://racetheweb.io/bank/withdraw",
+                "body": "amount=1",
+                "cookies": [
+                    "sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"
+                ],
+                "headers": null,
+                "redirects": true
+            }
+        ],
+        "Count": 98
+    }
+]
+```
+
 ## Binaries
 
 The program has been written in Go, and as such can be compiled to all the common platforms in use today. The following architectures have been compiled, and can be found in the [releases](https://github.com/insp3ctre/race-the-web/releases) tab:
@@ -75,6 +217,10 @@ The program has been written in Go, and as such can be compiled to all the commo
 ## Compiling
 
 If you already have Go installed on your system, you can simply run `make build` at the command-line from within the top-level directory of this project to build a binary for your CPU architecture. Or you can run `make` to build for all major CPU architectures at once.
+
+### Note: Dep
+
+This project uses [Dep](https://github.com/golang/dep) for dependency management. All of the required files are kept in the `vendor` directory, however if you are getting errors related to dependencies, simply download Dep and run the following command from the RTW directory in order to download all dependencies: `dep ensure`.
 
 ## The Vulnerability
 
@@ -97,8 +243,8 @@ Credit goes to [Josip Franjković](https://twitter.com/josipfranjkovic) for his 
 
 The [Go programming language](https://golang.org/) is perfectly suited for the task, mainly because it is *so damned fast*. Here are a few reasons why:
 
-* Concurrency: Concurrency primitives are built into the language itself, and extremely easy to add to any Go program. Threading is [handled by the Go runtime scheduler](https://morsmachine.dk/go-scheduler), and not by the underlying operating system, which allows for some serious performance optimizations when it comes to concurrency.
-* Compiled: *Cross-compiles* to [most modern operating systems](https://golang.org/doc/install/source#environment); not slowed down by an interpreter or virtual machine middle-layer ([here are some benchmarks vs Java](https://benchmarksgame.alioth.debian.org/u64q/go.html)). (Oh, and did I mention that the binaries are statically compiled?)
-* Lightweight: Only [25 keywords](https://golang.org/ref/spec#Keywords) in the language, and yet still almost everything can be done using the standard library.
+- Concurrency: Concurrency primitives are built into the language itself, and extremely easy to add to any Go program. Threading is [handled by the Go runtime scheduler](https://morsmachine.dk/go-scheduler), and not by the underlying operating system, which allows for some serious performance optimizations when it comes to concurrency.
+- Compiled: *Cross-compiles* to [most modern operating systems](https://golang.org/doc/install/source#environment); not slowed down by an interpreter or virtual machine middle-layer ([here are some benchmarks vs Java](https://benchmarksgame.alioth.debian.org/u64q/go.html)). (Oh, and did I mention that the binaries are statically compiled?)
+- Lightweight: Only [25 keywords](https://golang.org/ref/spec#Keywords) in the language, and yet still almost everything can be done using the standard library.
 
 For more of the nitty-gritty details on why Go is so fast, see [Dave Cheney](https://twitter.com/davecheney)'s [excellent talk on the subject](http://dave.cheney.net/2014/06/07/five-things-that-make-go-fast), from 2014.

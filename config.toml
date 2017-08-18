@@ -7,8 +7,8 @@ verbose = true
 # Use an http proxy for all connections
 proxy = "http://127.0.0.1:8080"
 
-# Specify the first target
-[[target]]
+# Specify the first request
+[[requests]]
     # Use the GET request method
     method = "GET"
     # Set the URL target. Any valid URL is accepted, including ports, https, and parameters.
@@ -22,8 +22,8 @@ proxy = "http://127.0.0.1:8080"
     # Follow redirects
     redirects = true
 
-# Specify the second target
-[[target]]
+# Specify the second request
+[[requests]]
     # Use the POST request method
     method = "POST"
     # Set the URL target. Any valid URL is accepted, including ports, https, and parameters.
