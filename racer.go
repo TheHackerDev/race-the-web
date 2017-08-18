@@ -40,17 +40,17 @@ func (err *RedirectError) Error() string {
 // Verbose: false
 // Proxy: *none*
 type Configuration struct {
-	Count   int      `json:"count"`
-	Verbose bool     `json:"verbose"`
-	Proxy   string   `json:"proxy"`
-	Targets []Target `json:"targets" binding:"required"`
+	Count    int       `json:"count"`
+	Verbose  bool      `json:"verbose"`
+	Proxy    string    `json:"proxy"`
+	Requests []Request `json:"requests" binding:"required"`
 }
 
-// Target is a struct to hold information about an individual target URL endpoint.
-type Target struct {
+// Request is a struct to hold information about an individual request being made as a part of the race condition test.
+type Request struct {
 	Method    string         `json:"method" binding:"required"`
 	URL       string         `json:"url" binding:"required"`
-	Body      string         `json:"body"` // NOTE: This is a base64 encoded string of the entire body contents (especially useful in the case of full HTML pages)
+	Body      string         `json:"body"`
 	Cookies   []string       `json:"cookies"`
 	Headers   []string       `json:"headers"`
 	Redirects bool           `json:"redirects"`
@@ -80,13 +80,13 @@ var configuration Configuration
 // ResponseInfo details information about responses received from targets. Uses *http.Response here for speed, as this struct is used in gathering data quickly back from targets (before comparison begins). This will later be parsed and converted into a UniqueResponseData object.
 type ResponseInfo struct {
 	Response *http.Response
-	Target   Target
+	Target   Request
 }
 
 // UniqueResponseInfo details information about unique responses received from targets
 type UniqueResponseInfo struct {
 	Response UniqueResponseData
-	Targets  []Target
+	Targets  []Request
 	Count    int
 }
 
@@ -128,7 +128,7 @@ func Start() (error, []UniqueResponseInfo) {
 	}
 
 	// Verify that config is present
-	if len(configuration.Targets) == 0 {
+	if len(configuration.Requests) == 0 {
 		// No targets specified
 		return fmt.Errorf("No targets set. Minimum of 1 target required."), nil
 	}
@@ -196,7 +196,7 @@ func getConfigFile(location string) (Configuration, error) {
 // Returns an error if something went wrong.
 func prepareAttack() error {
 	// Add the cookies to the cookiejar for each target
-	for _, target := range configuration.Targets {
+	for _, target := range configuration.Requests {
 		target.CookieJar, _ = cookiejar.New(nil)
 		var cookies []*http.Cookie
 		for _, c := range target.Cookies {
@@ -254,13 +254,13 @@ func SetDefaults(config *Configuration) {
 // Errors are passed back in a channel of errors. If the length is zero, there were no errors.
 func sendRequests() (responses chan ResponseInfo, errors chan error) {
 	// Initialize the concurrency objects
-	responses = make(chan ResponseInfo, configuration.Count*len(configuration.Targets))
-	errors = make(chan error, configuration.Count*len(configuration.Targets))
-	urlsInProgress.Add(configuration.Count * len(configuration.Targets))
+	responses = make(chan ResponseInfo, configuration.Count*len(configuration.Requests))
+	errors = make(chan error, configuration.Count*len(configuration.Requests))
+	urlsInProgress.Add(configuration.Count * len(configuration.Requests))
 
 	// Send requests to multiple URLs (if present) the same number of times
-	for _, target := range configuration.Targets {
-		go func(t Target) {
+	for _, target := range configuration.Requests {
+		go func(t Request) {
 			// Cast the target URL to a URL type
 			tURL, err := url.Parse(t.URL)
 			if err != nil {
@@ -450,7 +450,7 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{
 				Count:    1,
 				Response: respData,
-				Targets:  []Target{respInfo.Target}})
+				Targets:  []Request{respInfo.Target}})
 			continue
 		}
 
@@ -491,7 +491,7 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 			uniqueResponses = append(uniqueResponses, UniqueResponseInfo{
 				Count:    1,
 				Response: respData,
-				Targets:  []Target{respInfo.Target}})
+				Targets:  []Request{respInfo.Target}})
 			// Increase loop count to account for newly added unique response
 			j++
 		}
