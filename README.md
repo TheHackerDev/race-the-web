@@ -239,19 +239,19 @@ The program has been written in Go, and as such can be compiled to all the commo
 
 ## Compiling
 
-If you already have Go installed on your system, you can simply run
+First, make sure you have Go installed on your system. If you don't you can follow the install instructions for your operating system of choice here: https://golang.org/doc/install.
+
+Build a binary for your current CPU architecture
 
 ```sh
 $ make build
 ```
 
-at the command-line from within the top-level directory of this project to build a binary for your CPU architecture. Or you can run
+Build for all major CPU architectures (see [Makefile](https://github.com/insp3ctre/race-the-web/blob/master/Makefile) for details) at once
 
 ```sh
 $ make
 ```
-
-to build for all major CPU architectures at once.
 
 ### Dep
 
