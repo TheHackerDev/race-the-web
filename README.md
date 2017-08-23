@@ -1,4 +1,4 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/insp3ctre/race-the-web)](https://goreportcard.com/report/github.com/insp3ctre/race-the-web)
+[![Go Report Card](https://goreportcard.com/badge/github.com/insp3ctre/race-the-web)](https://goreportcard.com/report/github.com/insp3ctre/race-the-web) [![Build Status](https://travis-ci.org/insp3ctre/race-the-web.svg?branch=master)](https://travis-ci.org/insp3ctre/race-the-web)
 
 # Race The Web (RTW)
 
@@ -16,8 +16,17 @@ _Racing the Web - Hackfest 2016_
 
 ## Usage
 
-- With configuration file: `race-the-web config.toml`
-- API: `race-the-web`
+With configuration file
+
+```sh
+$ race-the-web config.toml
+```
+
+API
+
+```sh
+$ race-the-web
+```
 
 ### Configuration File
 
@@ -100,14 +109,28 @@ The API works through a simple set of HTTP calls. You provide input in the form 
 
 _Note that this example uses the accompanying website for testing race condition vulnerabilities in web applications, found at [RaceTheWeb.io](http://racetheweb.io)_
 
-1. Send the configuration data: `curl -d '{"count":100,"verbose":false,"requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"body":"amount=1","redirects":true}]}' -H "Content-Type: application/json" -X POST http://127.0.0.1:8000/set/config`.
-    - Response:
-    ```JSON{"message":"configuration saved"}```
-2. Retrieve the configuration data for validation: `curl -X GET http://127.0.0.1:8000/get/config`.
-    - Response:
-    ```JSON{"count":100,"verbose":false,"proxy":"","requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","body":"amount=1","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"headers":null,"redirects":true}]}```
-3. Start the race condition test: `curl -X POST http://127.0.0.1:8000/start`.
-    - Response (expanded for visibility):
+1. Send the configuration data
+
+```sh
+$ curl -d '{"count":100,"verbose":false,"requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"body":"amount=1","redirects":true}]}' -H "Content-Type: application/json" -X POST http://127.0.0.1:8000/set/config
+{"message":"configuration saved"}
+```
+
+2. Retrieve the configuration data for validation
+
+```sh
+$ curl -X GET http://127.0.0.1:8000/get/config
+{"count":100,"verbose":false,"proxy":"","requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","body":"amount=1","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"headers":null,"redirects":true}]}
+```
+
+3. Start the race condition test
+
+```sh
+$ curl -X POST http://127.0.0.1:8000/start
+```
+
+Response (expanded for visibility):
+
 ```JSON
 [
     {
@@ -216,11 +239,37 @@ The program has been written in Go, and as such can be compiled to all the commo
 
 ## Compiling
 
-If you already have Go installed on your system, you can simply run `make build` at the command-line from within the top-level directory of this project to build a binary for your CPU architecture. Or you can run `make` to build for all major CPU architectures at once.
+If you already have Go installed on your system, you can simply run
 
-### Note: Dep
+```sh
+$ make build
+```
 
-This project uses [Dep](https://github.com/golang/dep) for dependency management. All of the required files are kept in the `vendor` directory, however if you are getting errors related to dependencies, simply download Dep and run the following command from the RTW directory in order to download all dependencies: `dep ensure`.
+at the command-line from within the top-level directory of this project to build a binary for your CPU architecture. Or you can run
+
+```sh
+$ make
+```
+
+to build for all major CPU architectures at once.
+
+### Dep
+
+This project uses [Dep](https://github.com/golang/dep) for dependency management. All of the required files are kept in the `vendor` directory, however if you are getting errors related to dependencies, simply download Dep
+
+```sh
+$ go get -u github.com/golang/dep/cmd/dep
+```
+
+and run the following command from the RTW directory in order to download all dependencies
+
+```sh
+$ dep ensure
+```
+
+### Go 1.7 and newer are supported
+
+Before 1.7, the `encoding/json` package's `Encoder` did not have a method to escape the `&`, `<`, and `>` characters; this is required in order to have a clean output of full HTML pages when running these race tests. _If this is an issue for your test cases, please submit a [new issue](https://github.com/insp3ctre/race-the-web/issues) indicating as such, and I will add a workaround (just note that any output from a server with those characters will come back with unicode escapes instead)._ Here are the relevant release details from Go 1.7: https://golang.org/doc/go1.7#encoding_json.
 
 ## The Vulnerability
 
