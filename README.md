@@ -113,6 +113,7 @@ _Note that this example uses the accompanying website for testing race condition
 
 ```sh
 $ curl -d '{"count":100,"verbose":false,"requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"body":"amount=1","redirects":true}]}' -H "Content-Type: application/json" -X POST http://127.0.0.1:8000/set/config
+
 {"message":"configuration saved"}
 ```
 
@@ -120,6 +121,7 @@ $ curl -d '{"count":100,"verbose":false,"requests":[{"method":"POST","url":"http
 
 ```sh
 $ curl -X GET http://127.0.0.1:8000/get/config
+
 {"count":100,"verbose":false,"proxy":"","requests":[{"method":"POST","url":"http://racetheweb.io/bank/withdraw","body":"amount=1","cookies":["sessionId=Ay2jnxL2TvMnBD2ZF-5bXTXFEldIIBCpcS4FLB-5xjEbDaVnLbf0pPME8DIuNa7-"],"headers":null,"redirects":true}]}
 ```
 
