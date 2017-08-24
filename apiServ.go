@@ -8,7 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func StartAPI() error {
+// StartAPI starts the API server.
+func StartAPI() {
 	// Set Gin configuration mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -19,8 +20,6 @@ func StartAPI() error {
 	router.POST("/start", APIStart)
 
 	router.Run("127.0.0.1:8000")
-
-	return nil
 }
 
 // API endpoint to set the configuration options

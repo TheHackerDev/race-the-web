@@ -18,12 +18,7 @@ func main() {
 		os.Exit(0)
 	} else {
 		// Start API
-		err := StartAPI()
-		if err != nil {
-			outError("[ERROR] %s\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
+		StartAPI()
 	}
 }
 
