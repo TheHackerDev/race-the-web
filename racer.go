@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -16,7 +14,7 @@ import (
 	"time"
 
 	// Used to parse TOML configuration file
-	"github.com/naoina/toml"
+
 	// Used to output in colour to the console
 	"github.com/fatih/color"
 )
@@ -111,22 +109,10 @@ func init() {
 	usage = fmt.Sprintf("Usage: %s config.toml", os.Args[0])
 }
 
-// Function Start is the entrypoint to the race testing component of the application. It sends the work to the appropriate functions, sequentially.
-// Start also handles logging for the race tests.
-func Start() (error, []UniqueResponseInfo) {
-	// Change output location of logs
-	log.SetOutput(os.Stdout)
-
-	if len(os.Args) >= 2 {
-		// Check the config file
-		configFile := os.Args[1]
-		var err error
-		configuration, err = getConfigFile(configFile)
-		if err != nil {
-			return err, nil
-		}
-	}
-
+// StartRace begins the race test.
+// Also handles logging for the race tests. (TODO: extract this out to a channel that runs concurrently)
+// Returns any errors that occur and a slice of unique response data for the consumer of this function to handle.
+func StartRace() (error, []UniqueResponseInfo) {
 	// Verify that config is present
 	if len(configuration.Requests) == 0 {
 		// No targets specified
@@ -163,33 +149,6 @@ func Start() (error, []UniqueResponseInfo) {
 
 	// Return the responses back to the API
 	return nil, uniqueResponses
-}
-
-// Function getConfigFile checks that all necessary configuration fields are given
-// in a valid config file, and parses it for data.
-// Returns a Configuration object if successful.
-// Returns an empty Configuration object and a custom error if something went wrong.
-func getConfigFile(location string) (Configuration, error) {
-	f, err := os.Open(location)
-	if err != nil {
-		return Configuration{}, fmt.Errorf("Error opening configuration file: %s", err.Error())
-	}
-	defer f.Close()
-
-	buf, err := ioutil.ReadAll(f)
-	if err != nil {
-		return Configuration{}, fmt.Errorf("Error reading from configuration file: %s", err.Error())
-	}
-	var config Configuration
-	// Parse all data from the provided configuration file into a Configuration object
-	if err := toml.Unmarshal(buf, &config); err != nil {
-		return Configuration{}, fmt.Errorf("Error with TOML file: %s", err.Error())
-	}
-
-	// Set default values
-	SetDefaults(&config)
-
-	return config, nil
 }
 
 // Prepares an attack by parsing a global configuration.
@@ -238,16 +197,6 @@ func prepareAttack() error {
 	}
 
 	return nil
-}
-
-// Function SetDefaults sets the default options, if not present in the configuration file.
-// Redirects and verbose are both false, as the default value of a boolean.
-func SetDefaults(config *Configuration) {
-	// Count
-	if config.Count == 0 {
-		// Set to default value of 100
-		config.Count = 100
-	}
 }
 
 // Function sendRequests takes care of sending the requests to the target concurrently.
@@ -325,8 +274,6 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 						req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 					}
-
-					// TODO: Add context to http client requests to manually specify timeout options (new in Go 1.7)
 
 					var transport http.Transport
 					// Use proxy, if set
@@ -425,7 +372,7 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 	// Compare the responses, one at a time
 	for respInfo := range responses {
 		// Read the response body
-		respBody, err := readResponseBody(respInfo.Response)
+		respBody, err := ReadResponseBody(respInfo.Response)
 		if err != nil {
 			errors <- fmt.Errorf("Error reading response body: %s", err.Error())
 
@@ -504,51 +451,6 @@ func compareResponses(responses chan ResponseInfo) (uniqueResponses []UniqueResp
 
 	// Close the channels
 	close(errors)
-
-	return
-}
-
-func outputResponses(uniqueResponses []UniqueResponseInfo) {
-	// Display the responses
-	fmt.Printf("Unique Responses:\n\n")
-	for _, data := range uniqueResponses {
-		fmt.Println("**************************************************")
-		fmt.Printf("RESPONSE:\n")
-		fmt.Printf("[Status Code] %v\n", data.Response.StatusCode)
-		fmt.Printf("[Protocol] %v\n", data.Response.Protocol)
-		if len(data.Response.Headers) != 0 {
-			fmt.Println("[Headers]")
-			for header, value := range data.Response.Headers {
-				fmt.Printf("\t%v: %v\n", header, value)
-			}
-		}
-		fmt.Printf("[Location] %v\n", data.Response.Location)
-		fmt.Printf("[Body]\n%s\n", data.Response.Body)
-		fmt.Printf("Similar: %v\n", data.Count-1)
-		fmt.Printf("REQUESTS:\n")
-		for _, target := range data.Targets {
-			fmt.Printf("\tURL: %s\n", target.URL)
-			fmt.Printf("\tMethod: %s\n", target.Method)
-			fmt.Printf("\tBody: %s\n", target.Body)
-			fmt.Printf("\tCookies: %v\n", target.Cookies)
-			if configuration.Proxy != "" {
-				fmt.Printf("\tProxy: %v\n", configuration.Proxy)
-			}
-			fmt.Printf("\tRedirects: %t\n", target.Redirects)
-			fmt.Println()
-		}
-	}
-}
-
-// Function readResponseBody is a helper function to read the content form a response's body,
-// and refill the body with another io.ReadCloser, so that it can be read again.
-func readResponseBody(resp *http.Response) (content []byte, err error) {
-	// Get the content
-	content, err = ioutil.ReadAll(resp.Body)
-
-	// Reset the response body
-	rCloser := ioutil.NopCloser(bytes.NewBuffer(content))
-	resp.Body = rCloser
 
 	return
 }

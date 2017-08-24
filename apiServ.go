@@ -64,7 +64,7 @@ func GetConfig(ctx *gin.Context) {
 // API endpoint to begin the race test using the configuration file already provided.
 func APIStart(ctx *gin.Context) {
 	// Run race test, returning any initial errors
-	err, responses := Start()
+	err, responses := StartRace()
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": fmt.Sprintf("error: %s", err.Error()),
