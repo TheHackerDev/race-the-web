@@ -260,17 +260,26 @@ func sendRequests() (responses chan ResponseInfo, errors chan error) {
 						req.Header.Add("Cookie", cookieStr)
 					}
 
+					// Track whether content-type header has been added
+					contentType := false
+
 					// Add custom headers to the request
 					for _, header := range t.Headers {
 						split := strings.Split(header, ":")
 						hKey := split[0]
 						hVal := split[1]
 						req.Header.Add(hKey, hVal)
+
+						// Check for Content-Type header
+						if strings.ToLower(hKey) == "content-type" {
+							contentType = true
+							fmt.Println("[DEBUG] Content-Type Found!")
+						}
 					}
 
 					// Add content-type to POST requests (some applications require this to properly process POST requests)
 					// TODO: Find any bugs around other request types
-					if t.Method == "POST" {
+					if !contentType && t.Method == "POST" {
 						req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 					}
