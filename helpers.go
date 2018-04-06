@@ -16,7 +16,7 @@ func SetDefaults(config *Configuration) {
 	}
 }
 
-// Function ReadResponseBody is a helper function to read the content form a response's body and refill the body with another io.ReadCloser, so that it can be read again.
+// Function ReadResponseBody is a helper function to read the content from a response's body and refill the body with another io.ReadCloser, so that it can be read again.
 func ReadResponseBody(resp *http.Response) (content []byte, err error) {
 	// Get the content
 	content, err = ioutil.ReadAll(resp.Body)
