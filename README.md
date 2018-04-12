@@ -4,6 +4,12 @@
 
 Tests for race conditions in web applications by sending out a user-specified number of requests to a target URL (or URLs) *simultaneously*, and then compares the responses from the server for uniqueness. Includes a number of configuration options.
 
+## NOTE: RaceTheWeb.io
+
+Are you wondering why you've been redirected to this GitHub page instead of http://RaceTheWeb.io? **I will be moving the entire vulnerable web application into Race The Web as a part of this repository!** That means you will have access to source code, so you can get a better understanding of what a real race condition vulnerability looks like. It also means that you'll be able to spin up a local version to practice or to demonstrate race conditions to all your friends and family (I hear it's a hit at dinner parties)!
+
+*Stay tuned...*
+
 ## UPDATE: Now CI Compatible!
 
 Version 2.0.0 now makes it easier than ever to integrate RTW into your continuous integration pipeline (à la [Jenkins](https://jenkins.io/), [Travis](https://travis-ci.org/), or [Drone](https://github.com/drone/drone)), through the use of an easy to use HTTP API. More information can be found in the **Usage** section below.
