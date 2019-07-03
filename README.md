@@ -1,4 +1,4 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/insp3ctre/race-the-web)](https://goreportcard.com/report/github.com/insp3ctre/race-the-web) [![Build Status](https://travis-ci.org/insp3ctre/race-the-web.svg?branch=master)](https://travis-ci.org/insp3ctre/race-the-web)
+[![Go Report Card](https://goreportcard.com/badge/github.com/aaronhnatiw/race-the-web)](https://goreportcard.com/report/github.com/aaronhnatiw/race-the-web) [![Build Status](https://travis-ci.org/aaronhnatiw/race-the-web.svg?branch=master)](https://travis-ci.org/aaronhnatiw/race-the-web)
 
 # Race The Web (RTW)
 
@@ -19,6 +19,8 @@ Version 2.0.0 now makes it easier than ever to integrate RTW into your continuou
 [![Racing the Web - Hackfest 2016](https://img.youtube.com/vi/4T99v957I0o/0.jpg)](https://www.youtube.com/watch?v=4T99v957I0o)
 
 _Racing the Web - Hackfest 2016_
+
+Slides: https://www.slideshare.net/AaronHnatiw/racing-the-web-hackfest-2016
 
 ## Usage
 
