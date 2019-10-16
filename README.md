@@ -109,7 +109,6 @@ The API works through a simple set of HTTP calls. You provide input in the form 
 
 #### Example workflow using curl
 
-_Note that this example uses the accompanying website for testing race condition vulnerabilities in web applications, found at [RaceTheWeb.io](http://racetheweb.io)_
 
 1. Send the configuration data
 
