@@ -1,7 +1,0 @@
-# unmarshal-table-withinline.toml
-
-[tab1]
-tabarray = [{key = "1"}]
-
-[tab2]
-tabarray = [{key = "2"}]
