@@ -1,7 +1,0 @@
-# unmarshal-string-1.toml
-
-key1 = "One\nTwo"
-key2 = """One\nTwo"""
-key3 = """
-One
-Two"""

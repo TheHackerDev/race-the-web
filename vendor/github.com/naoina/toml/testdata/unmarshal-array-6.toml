@@ -1,7 +1,0 @@
-# unmarshal-array-6.toml
-
-ints = [
-  1 # this is ok
-  , 2
-  , 3
-]
